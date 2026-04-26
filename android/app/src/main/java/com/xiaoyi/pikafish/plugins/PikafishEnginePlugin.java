@@ -1,5 +1,6 @@
 package com.xiaoyi.pikafish.plugins;
 
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -59,40 +60,18 @@ public class PikafishEnginePlugin extends Plugin {
                     engineWorkDir.mkdirs();
                 }
                 
-                // 复制 NNUE 文件（如果存在）
-                File nnueFile = new File(engineWorkDir, "pikafish.nnue");
-                if (!nnueFile.exists()) {
-                    try {
-                        InputStream nnueStream = getContext().getAssets().open("engine/pikafish.nnue");
-                        FileOutputStream nnueOut = new FileOutputStream(nnueFile);
-                        byte[] buffer = new byte[8192];
-                        int bytesRead;
-                        while ((bytesRead = nnueStream.read(buffer)) != -1) {
-                            nnueOut.write(buffer, 0, bytesRead);
-                        }
-                        nnueOut.close();
-                        nnueStream.close();
-                        Log.d(TAG, "NNUE file copied");
-                    } catch (IOException e) {
-                        Log.w(TAG, "NNUE file not found, engine will work without NNUE");
-                    }
+                // 查找引擎库文件
+                File engineFile = findEngineLibrary();
+                
+                if (engineFile == null || !engineFile.exists()) {
+                    throw new RuntimeException("Engine library not found. Searched paths logged above.");
                 }
                 
-                // 获取原生库路径
-                String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
-                File engineFile = new File(nativeLibDir, "libpikafish.so");
-                
-                Log.d(TAG, "Native lib dir: " + nativeLibDir);
-                Log.d(TAG, "Engine file: " + engineFile.getAbsolutePath());
-                Log.d(TAG, "Engine exists: " + engineFile.exists());
-                
-                if (!engineFile.exists()) {
-                    throw new RuntimeException("Engine library not found: " + engineFile.getAbsolutePath());
-                }
+                Log.d(TAG, "Using engine: " + engineFile.getAbsolutePath());
                 
                 // 启动引擎进程
                 ProcessBuilder pb = new ProcessBuilder(engineFile.getAbsolutePath());
-                pb.directory(engineWorkDir);  // 设置工作目录，引擎会在这里找 NNUE 文件
+                pb.directory(engineWorkDir);
                 pb.redirectErrorStream(true);
                 
                 engineProcess = pb.start();
@@ -127,6 +106,103 @@ public class PikafishEnginePlugin extends Plugin {
                 });
             }
         });
+    }
+    
+    /**
+     * 查找引擎库文件
+     */
+    private File findEngineLibrary() {
+        String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
+        Log.d(TAG, "nativeLibraryDir: " + nativeLibDir);
+        
+        // 可能的路径列表
+        String[] possiblePaths = {
+            nativeLibDir + "/libpikafish.so",
+            nativeLibDir + "/../arm64-v8a/libpikafish.so",
+            nativeLibDir + "/../arm64/libpikafish.so",
+            getContext().getFilesDir() + "/libpikafish.so",
+        };
+        
+        // 也尝试从 APK 中提取
+        String abi = Build.SUPPORTED_ABIS[0];
+        Log.d(TAG, "Primary ABI: " + abi);
+        
+        for (String path : possiblePaths) {
+            File file = new File(path);
+            Log.d(TAG, "Checking: " + path + " -> exists: " + file.exists());
+            if (file.exists() && file.canExecute()) {
+                return file;
+            }
+        }
+        
+        // 尝试从 APK 中提取
+        try {
+            File extractedFile = extractEngineFromApk();
+            if (extractedFile != null) {
+                return extractedFile;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to extract engine from APK", e);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 从 APK 中提取引擎
+     */
+    private File extractEngineFromApk() throws IOException {
+        // 获取 APK 路径
+        String apkPath = getContext().getPackageResourcePath();
+        Log.d(TAG, "APK path: " + apkPath);
+        
+        // 目标文件
+        File targetFile = new File(getContext().getFilesDir(), "libpikafish.so");
+        
+        // 如果已经提取过，直接返回
+        if (targetFile.exists() && targetFile.length() > 1000000) {
+            targetFile.setExecutable(true);
+            Log.d(TAG, "Using cached engine: " + targetFile.getAbsolutePath());
+            return targetFile;
+        }
+        
+        // 使用 unzip 提取
+        Process process = Runtime.getRuntime().exec(new String[]{
+            "unzip", "-o", apkPath, "lib/arm64-v8a/libpikafish.so", "-d", getContext().getCacheDir().getAbsolutePath()
+        });
+        
+        try {
+            int exitCode = process.waitFor();
+            Log.d(TAG, "Unzip exit code: " + exitCode);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
+        // 移动到目标位置
+        File extracted = new File(getContext().getCacheDir(), "lib/arm64-v8a/libpikafish.so");
+        if (extracted.exists()) {
+            copyFile(extracted, targetFile);
+            targetFile.setExecutable(true);
+            targetFile.setReadable(true);
+            Log.d(TAG, "Extracted engine to: " + targetFile.getAbsolutePath());
+            return targetFile;
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 复制文件
+     */
+    private void copyFile(File src, File dst) throws IOException {
+        try (InputStream in = new java.io.FileInputStream(src);
+             FileOutputStream out = new FileOutputStream(dst)) {
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
+        }
     }
     
     @PluginMethod
@@ -207,12 +283,10 @@ public class PikafishEnginePlugin extends Plugin {
                     if (line != null) {
                         Log.d(TAG, "<<< " + line);
                         
-                        // 检查 readyok
                         if (line.contains("readyok")) {
                             isReady.set(true);
                         }
                         
-                        // 发送事件到 JavaScript
                         JSObject data = new JSObject();
                         data.put("message", line);
                         notifyListeners("engineMessage", data);
