@@ -18,8 +18,11 @@ import {
   type EngineMessage 
 } from '@/utils/engine';
 
+// 自动对弈模式
+export type AutoPlayMode = 'none' | 'red' | 'black' | 'both';
+
 export const useChessStore = defineStore('chess', {
-  state: (): GameState => ({
+  state: (): GameState & { autoPlayMode: AutoPlayMode } => ({
     board: INITIAL_BOARD.map(row => [...row]),
     currentTurn: 'red',
     selectedPos: null,
@@ -29,9 +32,40 @@ export const useChessStore = defineStore('chess', {
     engineInfo: null,
     gameOver: false,
     winner: null,
+    autoPlayMode: 'none',  // 新增：自动对弈模式
   }),
 
   actions: {
+    /**
+     * 设置自动对弈模式
+     */
+    setAutoPlayMode(mode: AutoPlayMode) {
+      this.autoPlayMode = mode;
+      console.log('[Store] Auto play mode:', mode);
+      
+      // 如果设置了新模式，检查是否需要立即让引擎走棋
+      if (mode !== 'none' && !this.gameOver && isEngineReady()) {
+        this.checkAutoPlay();
+      }
+    },
+
+    /**
+     * 检查是否需要自动走棋
+     */
+    checkAutoPlay() {
+      if (this.gameOver || this.engineThinking) return;
+      
+      const shouldEngineMove = 
+        (this.autoPlayMode === 'red' && this.currentTurn === 'red') ||
+        (this.autoPlayMode === 'black' && this.currentTurn === 'black') ||
+        (this.autoPlayMode === 'both');
+      
+      if (shouldEngineMove) {
+        console.log('[Store] Engine should move for', this.currentTurn);
+        this.startEngineAnalysis(true);  // true = 自动执行最佳走法
+      }
+    },
+
     /**
      * 初始化引擎
      */
@@ -85,7 +119,12 @@ export const useChessStore = defineStore('chess', {
         this.engineThinking = false;
         if (msg.data?.move) {
           console.log('[Store] Best move:', msg.data.move);
-          // 可以在这里实现自动走棋功能
+          
+          // 如果是自动对弈模式，执行走法
+          if (this.pendingAutoMove) {
+            this.pendingAutoMove = false;
+            this.executeEngineMove(msg.data.move);
+          }
         }
       } else if (msg.type === 'uciok') {
         console.log('[Store] UCI OK received');
@@ -94,11 +133,74 @@ export const useChessStore = defineStore('chess', {
       }
     },
 
+    pendingAutoMove: false,  // 是否等待自动执行走法
+
+    /**
+     * 开始引擎分析
+     */
+    async startEngineAnalysis(autoMove: boolean = false) {
+      if (!isNativePlatform() || !isEngineReady()) {
+        console.log('[Store] Engine not ready, skipping analysis');
+        return;
+      }
+
+      this.engineThinking = true;
+      this.engineInfo = null;
+      this.pendingAutoMove = autoMove;
+      
+      // 生成 FEN
+      const fen = boardToFen(this.board, this.currentTurn);
+      console.log('[Store] Starting analysis, FEN:', fen, 'autoMove:', autoMove);
+      
+      await analyzePosition(fen, 20);
+    },
+
+    /**
+     * 执行引擎走法
+     */
+    executeEngineMove(moveStr: string) {
+      // 解析走法字符串 (如 "a0a1")
+      if (moveStr.length < 4) {
+        console.error('[Store] Invalid move string:', moveStr);
+        return;
+      }
+
+      const fromCol = moveStr.charCodeAt(0) - 'a'.charCodeAt(0);
+      const fromRow = 9 - parseInt(moveStr[1]);
+      const toCol = moveStr.charCodeAt(2) - 'a'.charCodeAt(0);
+      const toRow = 9 - parseInt(moveStr[3]);
+
+      console.log('[Store] Executing engine move:', fromRow, fromCol, '->', toRow, toCol);
+
+      // 验证走法
+      const piece = this.board[fromRow][fromCol];
+      if (!piece || piece === ' ') {
+        console.error('[Store] No piece at source position');
+        return;
+      }
+
+      // 执行走法
+      this.movePiece(
+        { row: fromRow, col: fromCol },
+        { row: toRow, col: toCol }
+      );
+    },
+
     /**
      * 选择棋子
      */
     selectPiece(pos: Position) {
       if (this.gameOver) return;
+      
+      // 如果是引擎自动走棋的回合，忽略用户点击
+      if (
+        (this.autoPlayMode === 'red' && this.currentTurn === 'red') ||
+        (this.autoPlayMode === 'black' && this.currentTurn === 'black') ||
+        (this.autoPlayMode === 'both')
+      ) {
+        console.log('[Store] Ignoring user input, engine is playing');
+        return;
+      }
       
       const piece = this.board[pos.row][pos.col];
       
@@ -157,29 +259,15 @@ export const useChessStore = defineStore('chess', {
       this.selectedPos = null;
       this.validMoves = [];
       
-      // 自动开始引擎分析
-      if (!this.gameOver && isNativePlatform() && isEngineReady()) {
-        this.startEngineAnalysis();
+      // 检查是否需要引擎自动走棋
+      if (!this.gameOver) {
+        if (isNativePlatform() && isEngineReady()) {
+          // 延迟一点，让界面有时间更新
+          setTimeout(() => {
+            this.checkAutoPlay();
+          }, 300);
+        }
       }
-    },
-
-    /**
-     * 开始引擎分析
-     */
-    async startEngineAnalysis() {
-      if (!isNativePlatform() || !isEngineReady()) {
-        console.log('[Store] Engine not ready, skipping analysis');
-        return;
-      }
-
-      this.engineThinking = true;
-      this.engineInfo = null;
-      
-      // 生成 FEN
-      const fen = boardToFen(this.board, this.currentTurn);
-      console.log('[Store] Starting analysis, FEN:', fen);
-      
-      await analyzePosition(fen, 20);
     },
 
     /**
@@ -192,6 +280,7 @@ export const useChessStore = defineStore('chess', {
 
       await stopAnalysis();
       this.engineThinking = false;
+      this.pendingAutoMove = false;
     },
 
     /**
@@ -199,6 +288,11 @@ export const useChessStore = defineStore('chess', {
      */
     undoMove() {
       if (this.history.length === 0) return;
+      
+      // 如果引擎正在思考，先停止
+      if (this.engineThinking) {
+        this.stopEngineAnalysis();
+      }
       
       const lastMove = this.history.pop()!;
       
@@ -234,10 +328,13 @@ export const useChessStore = defineStore('chess', {
       this.engineInfo = null;
       this.gameOver = false;
       this.winner = null;
+      this.pendingAutoMove = false;
       
-      // 重新分析初始局面
+      // 检查是否需要引擎自动走棋
       if (isNativePlatform() && isEngineReady()) {
-        this.startEngineAnalysis();
+        setTimeout(() => {
+          this.checkAutoPlay();
+        }, 500);
       }
     },
 

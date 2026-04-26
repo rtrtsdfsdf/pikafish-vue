@@ -42,6 +42,29 @@
           {{ store.currentTurn === 'red' ? '🔴 红方' : '⚫ 黑方' }}走棋
         </div>
         
+        <!-- 自动对弈控制 -->
+        <div class="auto-play-control">
+          <div class="auto-play-label">自动对弈:</div>
+          <div class="auto-play-buttons">
+            <button 
+              @click="setAutoPlay('none')"
+              :class="{ active: store.autoPlayMode === 'none' }"
+            >关闭</button>
+            <button 
+              @click="setAutoPlay('red')"
+              :class="{ active: store.autoPlayMode === 'red' }"
+            >🔴 红方</button>
+            <button 
+              @click="setAutoPlay('black')"
+              :class="{ active: store.autoPlayMode === 'black' }"
+            >⚫ 黑方</button>
+            <button 
+              @click="setAutoPlay('both')"
+              :class="{ active: store.autoPlayMode === 'both' }"
+            >双人对战</button>
+          </div>
+        </div>
+        
         <!-- 引擎状态 -->
         <div class="engine-status" :class="{ 'error': engineError, 'success': engineReady }">
           <div class="status-label">引擎状态:</div>
@@ -59,7 +82,7 @@
         </div>
         
         <div v-if="store.engineThinking" class="thinking">
-          ⏳ 分析中...
+          ⏳ 思考中...
         </div>
         
         <div v-if="store.gameOver" class="game-over">
@@ -103,7 +126,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
-import { useChessStore } from '@/stores/chess';
+import { useChessStore, type AutoPlayMode } from '@/stores/chess';
 import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic';
 import { Capacitor } from '@capacitor/core';
 import { Clipboard } from '@capacitor/clipboard';
@@ -111,7 +134,7 @@ import { Clipboard } from '@capacitor/clipboard';
 const store = useChessStore();
 
 // 调试相关
-const showDebug = ref(true);  // 默认显示日志
+const showDebug = ref(false);  // 默认隐藏日志
 const debugLogs = ref<Array<{ time: string; level: string; message: string }>>([]);
 const debugLogsRef = ref<HTMLElement | null>(null);
 const copySuccess = ref(false);
@@ -120,6 +143,11 @@ const copySuccess = ref(false);
 const engineStatus = ref('未初始化');
 const engineError = ref(false);
 const engineReady = ref(false);
+
+// 设置自动对弈模式
+function setAutoPlay(mode: AutoPlayMode) {
+  store.setAutoPlayMode(mode);
+}
 
 // 拦截 console
 function setupLogging() {
@@ -172,8 +200,8 @@ function addLog(level: string, message: string) {
       engineStatus.value = '❌ ' + message.replace(/\[.*?\]/g, '').trim();
       engineError.value = true;
       engineReady.value = false;
-    } else if (message.includes('Analyzing')) {
-      engineStatus.value = '🔍 分析中...';
+    } else if (message.includes('Thinking') || message.includes('思考')) {
+      engineStatus.value = '🔍 思考中...';
     }
   }
 }
@@ -369,6 +397,49 @@ function handleCellClick(row: number, col: number) {
   background: #f5f5f5;
   border-radius: 8px;
   margin-bottom: 12px;
+}
+
+/* 自动对弈控制 */
+.auto-play-control {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #fff3e0;
+  border-radius: 8px;
+}
+
+.auto-play-label {
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #e65100;
+}
+
+.auto-play-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auto-play-buttons button {
+  flex: 1;
+  min-width: 70px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 2px solid #ff9800;
+  background: white;
+  color: #e65100;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.auto-play-buttons button:hover {
+  background: #fff8e1;
+}
+
+.auto-play-buttons button.active {
+  background: #ff9800;
+  color: white;
+  font-weight: bold;
 }
 
 .engine-status {
