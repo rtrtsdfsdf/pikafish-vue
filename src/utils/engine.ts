@@ -1,123 +1,181 @@
-// 简化版引擎 - 暂时不使用 WASM，只做基本的走法验证
+// Pikafish 引擎封装 - 使用 Capacitor 原生插件
 
-import type { EngineInfo } from '@/types/chess';
+import { Capacitor } from '@capacitor/core';
+import PikafishEngine from '../plugins/PikafishEngine';
+import type { PluginListenerHandle } from '@capacitor/core';
 
-// 引擎状态
-let isAnalyzing = false;
-let analysisCallback: ((info: EngineInfo) => void) | null = null;
-
-// 初始化引擎（简化版，不加载 WASM）
-export async function initEngine(onMessage: (msg: string) => void): Promise<void> {
-  console.log('Engine initialized (simplified mode)');
-  // 简化版不需要真正的初始化
-  return Promise.resolve();
+export interface EngineMessage {
+  type: 'info' | 'bestmove' | 'uciok' | 'readyok' | 'error' | 'other';
+  raw: string;
+  data?: Record<string, unknown>;
 }
 
-// 发送命令（简化版，不做任何事）
-export function sendCommand(cmd: string): void {
-  console.log('Engine command:', cmd);
-}
+export type MessageCallback = (msg: EngineMessage) => void;
 
-// 设置位置
-export function setPosition(fen: string): void {
-  console.log('Position set:', fen);
-}
+let isInitialized = false;
+let messageCallback: MessageCallback | null = null;
+let listenerHandle: PluginListenerHandle | null = null;
 
-// 开始分析（简化版，模拟分析结果）
-export function startAnalysis(depth: number = 20): void {
-  isAnalyzing = true;
-  
-  // 模拟分析延迟后返回结果
-  setTimeout(() => {
-    if (isAnalyzing && analysisCallback) {
-      analysisCallback({
-        depth: depth,
-        score: Math.floor(Math.random() * 200 - 100), // 随机分数
-        nodes: Math.floor(Math.random() * 100000),
-        nps: Math.floor(Math.random() * 10000),
-        time: Math.floor(Math.random() * 1000),
-        pv: []
-      });
-    }
-    isAnalyzing = false;
-  }, 500);
-}
-
-// 停止分析
-export function stopAnalysis(): void {
-  isAnalyzing = false;
-}
-
-// 设置分析回调
-export function setAnalysisCallback(callback: (info: EngineInfo) => void): void {
-  analysisCallback = callback;
-}
-
-// 设置哈希大小
-export function setHashSize(mb: number): void {
-  console.log('Hash size set:', mb);
-}
-
-// 设置线程数
-export function setThreads(n: number): void {
-  console.log('Threads set:', n);
-}
-
-// 解析引擎输出
-export function parseEngineLine(line: string): {
-  type: 'info' | 'bestmove' | 'uciok' | 'readyok' | 'other';
-  data?: any;
-} {
-  if (line.startsWith('info')) {
-    const info = parseInfoLine(line);
-    return { type: 'info', data: info };
-  } else if (line.startsWith('bestmove')) {
-    const match = line.match(/bestmove\s+(\w+)/);
-    if (match) {
-      return { type: 'bestmove', data: match[1] };
-    }
-  } else if (line === 'uciok') {
-    return { type: 'uciok' };
-  } else if (line === 'readyok') {
-    return { type: 'readyok' };
+/**
+ * 初始化引擎
+ */
+export async function initEngine(onMessage: MessageCallback): Promise<boolean> {
+  if (isInitialized) {
+    return true;
   }
-  return { type: 'other' };
-}
 
-function parseInfoLine(line: string): any {
-  const result: any = {};
-  
-  const depthMatch = line.match(/depth\s+(\d+)/);
-  if (depthMatch) result.depth = parseInt(depthMatch[1] || '0');
-  
-  const scoreMatch = line.match(/score\s+(cp|mate)\s+(-?\d+)/);
-  if (scoreMatch) {
-    if (scoreMatch[1] === 'cp') {
-      result.score = parseInt(scoreMatch[2] || '0');
+  messageCallback = onMessage;
+
+  try {
+    // 监听引擎输出事件
+    listenerHandle = await PikafishEngine.addListener('engineMessage', (data: { message: string }) => {
+      if (messageCallback) {
+        const msg = parseEngineMessage(data.message);
+        messageCallback(msg);
+      }
+    });
+    
+    // 初始化引擎
+    const result = await PikafishEngine.init();
+    
+    if (result.success) {
+      isInitialized = true;
+      console.log('[Engine] Initialized successfully');
+      return true;
     } else {
-      result.mate = parseInt(scoreMatch[2] || '0');
+      console.error('[Engine] Init failed:', result.error);
+      return false;
     }
+  } catch (error) {
+    console.error('[Engine] Init error:', error);
+    return false;
+  }
+}
+
+/**
+ * 发送 UCI 命令
+ */
+export async function sendCommand(command: string): Promise<boolean> {
+  if (!isInitialized) {
+    console.error('[Engine] Not initialized');
+    return false;
+  }
+
+  try {
+    const result = await PikafishEngine.sendCommand({ command });
+    return result.success;
+  } catch (error) {
+    console.error('[Engine] Send command error:', error);
+    return false;
+  }
+}
+
+/**
+ * 开始分析局面
+ */
+export async function analyzePosition(fen: string, depth: number = 20): Promise<void> {
+  await sendCommand('stop');
+  await sendCommand(`position fen ${fen}`);
+  await sendCommand(`go depth ${depth}`);
+}
+
+/**
+ * 停止分析
+ */
+export async function stopAnalysis(): Promise<void> {
+  await sendCommand('stop');
+}
+
+/**
+ * 关闭引擎
+ */
+export async function quitEngine(): Promise<void> {
+  if (isInitialized) {
+    await sendCommand('quit');
+    await PikafishEngine.quit();
+    
+    // 移除监听器
+    if (listenerHandle) {
+      await listenerHandle.remove();
+      listenerHandle = null;
+    }
+    
+    isInitialized = false;
+  }
+}
+
+/**
+ * 解析引擎消息
+ */
+function parseEngineMessage(raw: string): EngineMessage {
+  const trimmed = raw.trim();
+  
+  if (trimmed.startsWith('info')) {
+    return {
+      type: 'info',
+      raw: trimmed,
+      data: parseInfo(trimmed)
+    };
   }
   
-  const nodesMatch = line.match(/nodes\s+(\d+)/);
-  if (nodesMatch) result.nodes = parseInt(nodesMatch[1] || '0');
-  
-  const npsMatch = line.match(/nps\s+(\d+)/);
-  if (npsMatch) result.nps = parseInt(npsMatch[1] || '0');
-  
-  const timeMatch = line.match(/time\s+(\d+)/);
-  if (timeMatch) result.time = parseInt(timeMatch[1] || '0');
-  
-  const pvMatch = line.match(/\spv\s+(.+)/);
-  if (pvMatch) {
-    result.pv = (pvMatch[1] || '').trim().split(/\s+/);
+  if (trimmed.startsWith('bestmove')) {
+    const parts = trimmed.split(/\s+/);
+    return {
+      type: 'bestmove',
+      raw: trimmed,
+      data: {
+        move: parts[1],
+        ponder: parts[3] // 可选的 ponder 走法
+      }
+    };
   }
+  
+  if (trimmed === 'uciok') {
+    return { type: 'uciok', raw: trimmed };
+  }
+  
+  if (trimmed === 'readyok') {
+    return { type: 'readyok', raw: trimmed };
+  }
+  
+  return { type: 'other', raw: trimmed };
+}
+
+/**
+ * 解析 info 行
+ */
+function parseInfo(info: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  
+  // 解析 depth
+  const depthMatch = info.match(/depth\s+(\d+)/);
+  if (depthMatch) result.depth = parseInt(depthMatch[1]);
+  
+  // 解析 score
+  const scoreMatch = info.match(/score\s+(cp|mate)\s+(-?\d+)/);
+  if (scoreMatch) {
+    result.scoreType = scoreMatch[1];
+    result.score = parseInt(scoreMatch[2]);
+  }
+  
+  // 解析 nodes
+  const nodesMatch = info.match(/nodes\s+(\d+)/);
+  if (nodesMatch) result.nodes = parseInt(nodesMatch[1]);
+  
+  // 解析 time
+  const timeMatch = info.match(/time\s+(\d+)/);
+  if (timeMatch) result.time = parseInt(timeMatch[1]);
+  
+  // 解析 pv (主要变例)
+  const pvMatch = info.match(/pv\s+(.+)/);
+  if (pvMatch) result.pv = pvMatch[1].split(/\s+/);
   
   return result;
 }
 
-// 销毁引擎
-export function destroyEngine(): void {
-  isAnalyzing = false;
-  analysisCallback = null;
+/**
+ * 检查是否在原生平台
+ */
+export function isNativePlatform(): boolean {
+  return Capacitor.isNativePlatform();
 }

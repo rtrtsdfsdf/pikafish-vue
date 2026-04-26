@@ -7,6 +7,15 @@ import {
   getPieceColor,
   boardToFen
 } from '@/utils/chessLogic';
+import { 
+  initEngine, 
+  sendCommand, 
+  analyzePosition, 
+  stopAnalysis,
+  quitEngine,
+  isNativePlatform,
+  type EngineMessage 
+} from '@/utils/engine';
 
 export const useChessStore = defineStore('chess', {
   state: (): GameState => ({
@@ -22,10 +31,45 @@ export const useChessStore = defineStore('chess', {
   }),
 
   actions: {
-    // 初始化引擎（简化版）
+    // 初始化引擎
     async initGameEngine() {
-      // 简化版不需要引擎初始化
-      console.log('Game initialized');
+      if (!isNativePlatform()) {
+        console.log('[Store] Not native platform, engine disabled');
+        return;
+      }
+
+      const success = await initEngine((msg: EngineMessage) => {
+        this.handleEngineMessage(msg);
+      });
+
+      if (success) {
+        // 发送 UCI 初始化命令
+        await sendCommand('uci');
+        await sendCommand('isready');
+        console.log('[Store] Engine ready');
+      }
+    },
+
+    // 处理引擎消息
+    handleEngineMessage(msg: EngineMessage) {
+      if (msg.type === 'info') {
+        const data = msg.data;
+        if (data && data.depth && data.score !== undefined) {
+          this.engineInfo = {
+            depth: data.depth as number,
+            score: data.score as number,
+            scoreType: data.scoreType as 'cp' | 'mate',
+            nodes: data.nodes as number,
+            time: data.time as number,
+            pv: data.pv as string[],
+          };
+        }
+      } else if (msg.type === 'bestmove') {
+        this.engineThinking = false;
+        if (msg.data?.move) {
+          console.log('[Store] Best move:', msg.data.move);
+        }
+      }
     },
 
     // 选择棋子
@@ -87,17 +131,30 @@ export const useChessStore = defineStore('chess', {
       this.selectedPos = null;
       this.validMoves = [];
       
-      // 简化版：不调用引擎分析
-      this.engineThinking = false;
+      // 自动开始引擎分析
+      if (!this.gameOver && isNativePlatform()) {
+        this.startEngineAnalysis();
+      }
     },
 
-    // 开始引擎分析（简化版：不做任何事）
-    startEngineAnalysis() {
-      this.engineThinking = false;
+    // 开始引擎分析
+    async startEngineAnalysis() {
+      if (!isNativePlatform()) {
+        return;
+      }
+
+      this.engineThinking = true;
+      const fen = boardToFen(this.board, this.currentTurn);
+      await analyzePosition(fen, 20);
     },
 
     // 停止引擎分析
-    stopEngineAnalysis() {
+    async stopEngineAnalysis() {
+      if (!isNativePlatform()) {
+        return;
+      }
+
+      await stopAnalysis();
       this.engineThinking = false;
     },
 
@@ -117,10 +174,17 @@ export const useChessStore = defineStore('chess', {
       this.winner = null;
       this.selectedPos = null;
       this.validMoves = [];
+      
+      // 重新分析
+      if (isNativePlatform()) {
+        this.startEngineAnalysis();
+      }
     },
 
     // 重新开始
-    resetGame() {
+    async resetGame() {
+      await stopAnalysis();
+      
       this.board = INITIAL_BOARD.map(row => [...row]);
       this.currentTurn = 'red';
       this.selectedPos = null;
@@ -136,6 +200,11 @@ export const useChessStore = defineStore('chess', {
     flipBoard() {
       this.board = this.board.reverse().map(row => [...row].reverse());
       this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
+    },
+
+    // 清理引擎
+    async cleanup() {
+      await quitEngine();
     }
   }
 });

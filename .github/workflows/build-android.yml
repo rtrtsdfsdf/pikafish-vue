@@ -44,6 +44,11 @@ jobs:
           npx cap add android || true
           npx cap sync android
           
+      - name: Ensure jniLibs directory
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p android/app/src/main/jniLibs/armeabi-v7a
+          
       - name: Build APK
         run: |
           cd android
