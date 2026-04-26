@@ -98,7 +98,18 @@ public class PikafishEnginePlugin extends Plugin {
                     debug("Setting NNUE env: " + nnueFile.getAbsolutePath());
                 }
                 
-                engineProcess = Runtime.getRuntime().exec(new String[]{enginePath}, envp, engineWorkDir);
+                // Android 10+ SELinux 限制：filesDir 中的文件不能直接执行
+                // 使用 linker64 来加载和执行
+                String[] cmd;
+                if (android.os.Build.VERSION.SDK_INT >= 29) {  // Android 10+
+                    // 使用 linker64 执行
+                    cmd = new String[]{"/system/bin/linker64", enginePath};
+                    debug("Using linker64 for Android 10+");
+                } else {
+                    cmd = new String[]{enginePath};
+                }
+                
+                engineProcess = Runtime.getRuntime().exec(cmd, envp, engineWorkDir);
                 
                 engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream()));
                 engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream()));
