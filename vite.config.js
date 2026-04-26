@@ -1,12 +1,12 @@
-const { defineConfig } = require('vite');
-const vue = require('@vitejs/plugin-vue');
-const path = require('path');
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import { fileURLToPath, URL } from 'node:url';
 
-module.exports = defineConfig({
+export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src')
+      '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   }
 });
