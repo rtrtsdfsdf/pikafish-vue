@@ -106,7 +106,8 @@ public class PikafishEnginePlugin extends Plugin {
                 // 加载 NNUE 模型（在 uci 之后）
                 if (nnueFile != null) {
                     debug("Loading NNUE model: " + nnueFile.getAbsolutePath());
-                    engineWriter.write("setoption name EvalFile value " + nnueFile.getName() + "\n");
+                    // 使用完整路径，因为引擎可能不在工作目录中查找
+                    engineWriter.write("setoption name EvalFile value " + nnueFile.getAbsolutePath() + "\n");
                     engineWriter.flush();
                     Thread.sleep(500);
                 }
