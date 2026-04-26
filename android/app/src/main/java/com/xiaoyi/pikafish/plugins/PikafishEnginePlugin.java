@@ -71,17 +71,20 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 debug("Work dir: " + engineWorkDir.getAbsolutePath());
                 
-                // 复制 NNUE 模型到 filesDir 根目录（引擎默认查找位置）
+                // 复制 NNUE 模型到工作目录
                 File nnueFile = copyNnueToFilesDir();
                 if (nnueFile != null) {
                     debug("NNUE model ready: " + nnueFile.getAbsolutePath());
                 }
                 
-                // 查找引擎
-                String enginePath = findEngine();
+                // 复制引擎到工作目录（因为 nativeLibraryDir 中的文件无法直接执行）
+                File engineFile = copyEngineToFilesDir();
+                if (engineFile == null) {
+                    throw new RuntimeException("Failed to copy engine");
+                }
                 
-                if (enginePath == null) {
-                    throw new RuntimeException("Engine not found");
+                String enginePath = engineFile.getAbsolutePath();
+                debug("Using engine: " + enginePath);
                 }
                 
                 debug("Using engine: " + enginePath);
@@ -208,9 +211,62 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
+     * 复制引擎到 filesDir（因为 nativeLibraryDir 中的文件无法直接执行）
+     */
+    private File copyEngineToFilesDir() {
+        try {
+            String engineName = "pikafish";
+            File targetFile = new File(engineWorkDir, engineName);
+            
+            debug("Engine target path: " + targetFile.getAbsolutePath());
+            
+            // 缓存检查
+            if (targetFile.exists() && targetFile.length() > 500000 && targetFile.canExecute()) {
+                debug("Using cached engine: " + targetFile.length() + " bytes");
+                return targetFile;
+            }
+            
+            // 从 assets 复制
+            InputStream is = getContext().getAssets().open("engine/" + engineName);
+            FileOutputStream fos = new FileOutputStream(targetFile);
+            
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            long total = 0;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+                total += bytesRead;
+            }
+            
+            fos.close();
+            is.close();
+            
+            // 设置可执行权限
+            targetFile.setExecutable(true, false);
+            targetFile.setReadable(true, false);
+            
+            debug("Copied engine: " + total + " bytes to " + targetFile.getAbsolutePath());
+            debug("File executable: " + targetFile.canExecute());
+            return targetFile;
+            
+        } catch (IOException e) {
+            debug("Engine copy FAILED: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
      * 查找引擎文件
      */
     private String findEngine() {
+        // 新方法：从 filesDir 查找复制的引擎
+        File engineInFiles = new File(engineWorkDir, "pikafish");
+        if (engineInFiles.exists() && engineInFiles.canExecute()) {
+            debug("FOUND in filesDir: " + engineInFiles.getAbsolutePath());
+            return engineInFiles.getAbsolutePath();
+        }
+        
+        // 旧方法：从 nativeLibraryDir 查找（备用）
         String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
         debug("nativeLibraryDir: " + nativeLibDir);
         
