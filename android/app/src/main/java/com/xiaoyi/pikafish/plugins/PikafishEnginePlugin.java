@@ -360,10 +360,10 @@ public class PikafishEnginePlugin extends Plugin {
                 return nnueFile;
             }
             
-            // 也检查 libpikafish.nnue.so（如果把 NNUE 打包成 .so）
-            File nnueSo = new File(libDir, "libpikafish.nnue.so");
+            // 也检查 libpikafish_nnue.so（如果把 NNUE 打包成 .so）
+            File nnueSo = new File(libDir, "libpikafish_nnue.so");
             if (nnueSo.exists() && nnueSo.canRead()) {
-                debug("Found libpikafish.nnue.so in nativeLibraryDir");
+                debug("Found libpikafish_nnue.so in nativeLibraryDir");
                 return nnueSo;
             }
         }
