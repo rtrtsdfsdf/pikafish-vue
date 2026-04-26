@@ -39,34 +39,53 @@ jobs:
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android --save-dev
           
-      - name: Backup jniLibs
+      - name: Backup native files
         run: |
-          # 备份 jniLibs，因为 cap sync 会删除它
-          mkdir -p /tmp/jniLibs_backup
-          cp -r android/app/src/main/jniLibs/* /tmp/jniLibs_backup/ 2>/dev/null || true
+          # 备份 jniLibs 和 assets，因为 cap sync 会删除它们
+          mkdir -p /tmp/backup/jniLibs
+          mkdir -p /tmp/backup/assets
+          cp -r android/app/src/main/jniLibs/* /tmp/backup/jniLibs/ 2>/dev/null || true
+          cp -r android/app/src/main/assets/* /tmp/backup/assets/ 2>/dev/null || true
+          
           echo "Backup contents:"
-          ls -la /tmp/jniLibs_backup/arm64-v8a/ || echo "No arm64-v8a backup"
+          ls -la /tmp/backup/jniLibs/arm64-v8a/ || echo "No jniLibs backup"
+          ls -la /tmp/backup/assets/engine/ || echo "No assets backup"
           
       - name: Add Android platform
         run: |
           npx cap add android || true
           npx cap sync android
           
-      - name: Restore jniLibs
+      - name: Restore native files
         run: |
           # 恢复 jniLibs
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          cp -r /tmp/jniLibs_backup/* android/app/src/main/jniLibs/ 2>/dev/null || true
+          cp -r /tmp/backup/jniLibs/* android/app/src/main/jniLibs/ 2>/dev/null || true
+          
+          # 恢复 assets
+          mkdir -p android/app/src/main/assets/engine
+          cp -r /tmp/backup/assets/* android/app/src/main/assets/ 2>/dev/null || true
           
           echo "Restored jniLibs:"
           ls -la android/app/src/main/jniLibs/arm64-v8a/
           
-          # 验证引擎大小
+          echo "Restored assets:"
+          ls -la android/app/src/main/assets/engine/
+          
+          # 验证文件大小
           ENGINE_SIZE=$(stat -c%s android/app/src/main/jniLibs/arm64-v8a/libpikafish.so 2>/dev/null || echo 0)
+          NNUE_SIZE=$(stat -c%s android/app/src/main/assets/engine/pikafish.nnue 2>/dev/null || echo 0)
+          
           echo "Engine size: $ENGINE_SIZE bytes"
+          echo "NNUE size: $NNUE_SIZE bytes"
           
           if [ "$ENGINE_SIZE" -lt 1000000 ]; then
-            echo "ERROR: Engine file is too small or missing!"
+            echo "ERROR: Engine file is too small!"
+            exit 1
+          fi
+          
+          if [ "$NNUE_SIZE" -lt 40000000 ]; then
+            echo "ERROR: NNUE file is too small!"
             exit 1
           fi
           
@@ -88,15 +107,9 @@ jobs:
           echo "Native libraries:"
           unzip -l $APK | grep "lib/"
           
-          # 检查 .so 文件大小
-          SO_SIZE=$(unzip -l $APK | grep "libpikafish.so" | awk '{print $1}')
           echo ""
-          echo "libpikafish.so size in APK: $SO_SIZE bytes"
-          
-          if [ "$SO_SIZE" -lt 1000000 ]; then
-            echo "ERROR: .so file in APK is too small!"
-            exit 1
-          fi
+          echo "Engine assets:"
+          unzip -l $APK | grep -E "engine|nnue" || echo "None"
           
       - name: Upload APK
         uses: actions/upload-artifact@v4
