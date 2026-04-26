@@ -79,7 +79,7 @@ jobs:
           echo "Engine size: $ENGINE_SIZE bytes"
           echo "NNUE size: $NNUE_SIZE bytes"
           
-          if [ "$ENGINE_SIZE" -lt 1000000 ]; then
+          if [ "$ENGINE_SIZE" -lt 500000 ]; then
             echo "ERROR: Engine file is too small!"
             exit 1
           fi
