@@ -85,9 +85,6 @@ public class PikafishEnginePlugin extends Plugin {
                 
                 String enginePath = engineFile.getAbsolutePath();
                 debug("Using engine: " + enginePath);
-                }
-                
-                debug("Using engine: " + enginePath);
                 
                 // 启动引擎
                 debug("Starting engine process...");
