@@ -98,24 +98,27 @@ public class PikafishEnginePlugin extends Plugin {
                 startOutputListener();
                 Thread.sleep(500);
                 
-                // 初始化 UCI（必须先发送 uci）
+                // 初始化 UCI
                 engineWriter.write("uci\n");
                 engineWriter.flush();
-                Thread.sleep(1000);  // 等待 uciok
+                Thread.sleep(2000);  // 等待 uciok（增加等待时间）
                 
-                // 加载 NNUE 模型（在 uci 之后）
+                // 加载 NNUE 模型（必须在 uciok 之后、isready 之前）
                 if (nnueFile != null) {
-                    debug("Loading NNUE model: " + nnueFile.getAbsolutePath());
-                    debug("NNUE file exists: " + nnueFile.exists());
-                    debug("NNUE file length: " + nnueFile.length());
-                    debug("NNUE file readable: " + nnueFile.canRead());
+                    debug("Loading NNUE model...");
+                    debug("NNUE file: " + nnueFile.getAbsolutePath());
+                    debug("NNUE exists: " + nnueFile.exists());
+                    debug("NNUE length: " + nnueFile.length());
+                    debug("NNUE readable: " + nnueFile.canRead());
                     
-                    // 尝试使用相对路径（因为工作目录就是 engineWorkDir）
-                    engineWriter.write("setoption name EvalFile value pikafish.nnue\n");
+                    // 使用完整路径
+                    String evalFilePath = nnueFile.getAbsolutePath();
+                    debug("Sending: setoption name EvalFile value " + evalFilePath);
+                    engineWriter.write("setoption name EvalFile value " + evalFilePath + "\n");
                     engineWriter.flush();
-                    Thread.sleep(500);
+                    Thread.sleep(1000);  // 给引擎时间加载 NNUE
                     
-                    debug("Sent EvalFile command with relative path");
+                    debug("EvalFile command sent");
                 }
                 
                 engineWriter.write("isready\n");
