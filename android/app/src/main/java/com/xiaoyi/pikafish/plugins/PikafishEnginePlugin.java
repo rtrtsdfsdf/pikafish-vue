@@ -115,11 +115,36 @@ public class PikafishEnginePlugin extends Plugin {
                 engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream()));
                 engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream()));
                 
+                // 同时读取错误流
+                BufferedReader errorReader = new BufferedReader(new InputStreamReader(engineProcess.getErrorStream()));
+                
                 isRunning.set(true);
                 debug("Process started!");
                 
+                // 启动错误流监听
+                new Thread(() -> {
+                    try {
+                        String line;
+                        while (engineProcess.isAlive()) {
+                            line = errorReader.readLine();
+                            if (line != null) {
+                                debug("STDERR: " + line);
+                            }
+                        }
+                    } catch (IOException e) {
+                        debug("Error reader: " + e.getMessage());
+                    }
+                }).start();
+                
                 startOutputListener();
+                
+                // 等待一下，检查进程是否存活
                 Thread.sleep(500);
+                if (!engineProcess.isAlive()) {
+                    debug("Process exited with code: " + engineProcess.exitValue());
+                    throw new RuntimeException("Engine process exited immediately");
+                }
+                debug("Process is alive, continuing...");
                 
                 // 初始化 UCI
                 debug("Sending uci command...");
