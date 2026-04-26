@@ -305,14 +305,7 @@ public class PikafishEnginePlugin extends Plugin {
      * 查找引擎文件
      */
     private String findEngine() {
-        // 新方法：从 filesDir 查找复制的引擎
-        File engineInFiles = new File(engineWorkDir, "pikafish");
-        if (engineInFiles.exists() && engineInFiles.canExecute()) {
-            debug("FOUND in filesDir: " + engineInFiles.getAbsolutePath());
-            return engineInFiles.getAbsolutePath();
-        }
-        
-        // 旧方法：从 nativeLibraryDir 查找（备用）
+        // 优先从 nativeLibraryDir 查找（有正确的 SELinux 上下文）
         String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
         debug("nativeLibraryDir: " + nativeLibDir);
         
@@ -323,8 +316,9 @@ public class PikafishEnginePlugin extends Plugin {
             debug("nativeLibraryDir files: " + (files != null ? files.length : 0));
             if (files != null) {
                 for (File f : files) {
-                    debug("  " + f.getName() + " exec:" + f.canExecute());
-                    if (f.getName().contains("pikafish") && f.canExecute()) {
+                    debug("  " + f.getName() + " exists:" + f.exists() + " canRead:" + f.canRead() + " canExecute:" + f.canExecute());
+                    // 检查 libpikafish.so（不要求 canExecute，因为 .so 文件可能没有执行权限）
+                    if (f.getName().equals("libpikafish.so") && f.exists()) {
                         debug("FOUND in nativeLibraryDir: " + f.getAbsolutePath());
                         return f.getAbsolutePath();
                     }
@@ -339,7 +333,7 @@ public class PikafishEnginePlugin extends Plugin {
             if (subdirs != null) {
                 for (File subdir : subdirs) {
                     File engine = new File(subdir, "libpikafish.so");
-                    if (engine.exists() && engine.canExecute()) {
+                    if (engine.exists()) {
                         debug("FOUND in " + subdir.getName() + ": " + engine.getAbsolutePath());
                         return engine.getAbsolutePath();
                     }
