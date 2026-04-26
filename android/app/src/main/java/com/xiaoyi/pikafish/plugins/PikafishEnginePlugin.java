@@ -132,9 +132,12 @@ public class PikafishEnginePlugin extends Plugin {
                     
                     // 使用完整路径
                     String evalFilePath = nnueFile.getAbsolutePath();
-                    debug("Sending: setoption name EvalFile value " + evalFilePath);
-                    engineWriter.write("setoption name EvalFile value " + evalFilePath + "\n");
+                    String evalFileCmd = "setoption name EvalFile value " + evalFilePath;
+                    debug("Full command: " + evalFileCmd);
+                    debug("Command length: " + evalFileCmd.length());
+                    engineWriter.write(evalFileCmd + "\n");
                     engineWriter.flush();
+                    debug("Command flushed to engine");
                     Thread.sleep(2000);  // 给引擎足够时间加载 NNUE
                     
                     debug("EvalFile command sent, waiting for load...");
