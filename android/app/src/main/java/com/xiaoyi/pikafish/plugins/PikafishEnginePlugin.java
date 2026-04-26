@@ -148,13 +148,11 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 debug("Waited " + (waitCount * 100) + "ms for uciok, received: " + uciOkReceived.get());
                 
-                // 不需要发送 EvalFile 命令！
-                // 引擎会在启动时自动从工作目录加载 pikafish.nnue
-                // 只要 NNUE 文件在工作目录中，引擎就能找到它
+                // 发送 EvalFile 命令，显式指定 NNUE 路径
                 if (nnueFile != null) {
-                    debug("NNUE file in work dir: " + nnueFile.getAbsolutePath());
-                    debug("NNUE exists: " + nnueFile.exists());
-                    debug("Engine will auto-load from work directory");
+                    debug("Sending EvalFile command: " + nnueFile.getAbsolutePath());
+                    engineWriter.write("setoption name EvalFile value " + nnueFile.getAbsolutePath() + "\n");
+                    engineWriter.flush();
                 }
                 
                 engineWriter.write("isready\n");
