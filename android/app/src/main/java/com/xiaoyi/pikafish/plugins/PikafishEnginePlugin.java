@@ -106,10 +106,16 @@ public class PikafishEnginePlugin extends Plugin {
                 // 加载 NNUE 模型（在 uci 之后）
                 if (nnueFile != null) {
                     debug("Loading NNUE model: " + nnueFile.getAbsolutePath());
-                    // 使用完整路径，因为引擎可能不在工作目录中查找
-                    engineWriter.write("setoption name EvalFile value " + nnueFile.getAbsolutePath() + "\n");
+                    debug("NNUE file exists: " + nnueFile.exists());
+                    debug("NNUE file length: " + nnueFile.length());
+                    debug("NNUE file readable: " + nnueFile.canRead());
+                    
+                    // 尝试使用相对路径（因为工作目录就是 engineWorkDir）
+                    engineWriter.write("setoption name EvalFile value pikafish.nnue\n");
                     engineWriter.flush();
                     Thread.sleep(500);
+                    
+                    debug("Sent EvalFile command with relative path");
                 }
                 
                 engineWriter.write("isready\n");
@@ -150,6 +156,8 @@ public class PikafishEnginePlugin extends Plugin {
             // 缓存检查
             if (targetFile.exists() && targetFile.length() > 40000000) {
                 debug("Using cached NNUE: " + targetFile.length() + " bytes");
+                debug("File readable: " + targetFile.canRead());
+                debug("File exists: " + targetFile.exists());
                 return targetFile;
             }
             
@@ -172,7 +180,11 @@ public class PikafishEnginePlugin extends Plugin {
             fos.close();
             is.close();
             
+            // 设置文件可读权限
+            targetFile.setReadable(true, false);
+            
             debug("Copied NNUE: " + total + " bytes to " + targetFile.getAbsolutePath());
+            debug("File readable after copy: " + targetFile.canRead());
             return targetFile;
             
         } catch (IOException e) {
