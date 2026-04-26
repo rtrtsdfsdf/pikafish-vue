@@ -44,32 +44,64 @@ jobs:
           npx cap add android || true
           npx cap sync android
           
-      - name: Download Pikafish engine
+      - name: Download and extract Pikafish
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           mkdir -p android/app/src/main/assets/engine
           
-          # Download from previous working release
-          echo "Downloading engine binary..."
-          curl -L -o /tmp/pikafish "https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2026-01-02/pikafish-bmi2-linux"
+          # Install 7z
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
           
-          # If that fails, try alternative
-          if [ ! -f /tmp/pikafish ] || [ ! -s /tmp/pikafish ]; then
-            echo "Trying alternative download..."
-            # Use the 7z package
-            sudo apt-get update && sudo apt-get install -y p7zip-full
-            curl -L -o /tmp/pikafish.7z "https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2026-01-02/Pikafish.2026-01-02.7z"
-            7z x /tmp/pikafish.7z -o/tmp/pikafish_extracted -y
-            find /tmp/pikafish_extracted -name "pikafish" -type f -exec cp {} /tmp/pikafish \;
+          # Download 7z package
+          echo "Downloading Pikafish.2026-01-02.7z (52.8 MB)..."
+          curl -L -o /tmp/pikafish.7z "https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2026-01-02/Pikafish.2026-01-02.7z"
+          
+          echo "Downloaded size: $(ls -lh /tmp/pikafish.7z | awk '{print $5}')"
+          
+          # Extract
+          echo "Extracting..."
+          7z x /tmp/pikafish.7z -o/tmp/pikafish -y
+          
+          echo "Extracted files:"
+          find /tmp/pikafish -type f -exec ls -lh {} \;
+          
+          # Find the Linux ARM64 binary
+          ENGINE=""
+          for f in /tmp/pikafish/pikafish /tmp/pikafish/*/pikafish; do
+            if [ -f "$f" ]; then
+              SIZE=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f" 2>/dev/null)
+              if [ "$SIZE" -gt 100000 ]; then
+                ENGINE="$f"
+                echo "Found engine: $f ($SIZE bytes)"
+                break
+              fi
+            fi
+          done
+          
+          if [ -z "$ENGINE" ]; then
+            echo "ERROR: No valid engine binary found!"
+            exit 1
           fi
           
-          ls -la /tmp/pikafish || echo "Engine not found!"
-          
           # Copy to jniLibs
-          cp /tmp/pikafish android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
+          cp "$ENGINE" android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
           
-          echo "jniLibs contents:"
-          ls -la android/app/src/main/jniLibs/arm64-v8a/
+          # Copy NNUE if exists
+          for f in /tmp/pikafish/*.nnue /tmp/pikafish/*/*.nnue; do
+            if [ -f "$f" ]; then
+              cp "$f" android/app/src/main/assets/engine/
+              echo "Copied NNUE: $f"
+            fi
+          done
+          
+          echo ""
+          echo "Final jniLibs:"
+          ls -lh android/app/src/main/jniLibs/arm64-v8a/
+          
+          echo ""
+          echo "Final assets:"
+          ls -lh android/app/src/main/assets/engine/ || echo "No engine assets"
           
       - name: Build APK
         run: |
@@ -77,11 +109,21 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
           
-      - name: Verify APK contents
+      - name: Verify APK
         run: |
-          echo "=== Checking APK contents ==="
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/|\.so" || echo "No .so files!"
-          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+          echo "=== APK Verification ==="
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          
+          echo ""
+          echo "APK size: $(ls -lh $APK | awk '{print $5}')"
+          
+          echo ""
+          echo "Native libraries:"
+          unzip -l $APK | grep "lib/"
+          
+          echo ""
+          echo "Engine assets:"
+          unzip -l $APK | grep -E "engine|nnue" || echo "None"
           
       - name: Upload APK
         uses: actions/upload-artifact@v4
