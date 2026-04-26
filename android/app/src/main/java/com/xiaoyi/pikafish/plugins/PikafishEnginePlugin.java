@@ -37,6 +37,7 @@ public class PikafishEnginePlugin extends Plugin {
     
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private final AtomicBoolean isReady = new AtomicBoolean(false);
+    private final AtomicBoolean uciOkReceived = new AtomicBoolean(false);
     
     private void debug(String msg) {
         Log.d(TAG, msg);
@@ -109,9 +110,17 @@ public class PikafishEnginePlugin extends Plugin {
                 Thread.sleep(500);
                 
                 // 初始化 UCI
+                debug("Sending uci command...");
                 engineWriter.write("uci\n");
                 engineWriter.flush();
-                Thread.sleep(2000);  // 等待 uciok（增加等待时间）
+                
+                // 等待 uciok（最多 5 秒）
+                int waitCount = 0;
+                while (!uciOkReceived.get() && waitCount < 50) {
+                    Thread.sleep(100);
+                    waitCount++;
+                }
+                debug("Waited " + (waitCount * 100) + "ms for uciok, received: " + uciOkReceived.get());
                 
                 // 加载 NNUE 模型（必须在 uciok 之后、isready 之前）
                 if (nnueFile != null) {
@@ -126,9 +135,9 @@ public class PikafishEnginePlugin extends Plugin {
                     debug("Sending: setoption name EvalFile value " + evalFilePath);
                     engineWriter.write("setoption name EvalFile value " + evalFilePath + "\n");
                     engineWriter.flush();
-                    Thread.sleep(1000);  // 给引擎时间加载 NNUE
+                    Thread.sleep(2000);  // 给引擎足够时间加载 NNUE
                     
-                    debug("EvalFile command sent");
+                    debug("EvalFile command sent, waiting for load...");
                 }
                 
                 engineWriter.write("isready\n");
@@ -157,18 +166,17 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
-     * 复制 NNUE 模型到引擎所在目录
+     * 复制 NNUE 模型到 filesDir（可写目录）
      */
     private File copyNnueToFilesDir() {
         try {
             String nnueName = "pikafish.nnue";
             
-            // 获取引擎所在目录（nativeLibraryDir）
-            String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
-            File targetFile = new File(nativeLibDir, nnueName);
+            // 使用 filesDir（应用私有目录，可写）
+            File targetFile = new File(getContext().getFilesDir(), nnueName);
             
             debug("NNUE target path: " + targetFile.getAbsolutePath());
-            debug("Native lib dir: " + nativeLibDir);
+            debug("Files dir: " + getContext().getFilesDir().getAbsolutePath());
             
             // 缓存检查
             if (targetFile.exists() && targetFile.length() > 40000000) {
@@ -327,6 +335,11 @@ public class PikafishEnginePlugin extends Plugin {
                     line = engineReader.readLine();
                     if (line != null) {
                         debug("<<< " + line);
+                        
+                        if (line.equals("uciok")) {
+                            uciOkReceived.set(true);
+                            debug("uciok received!");
+                        }
                         
                         if (line.contains("readyok")) {
                             isReady.set(true);
