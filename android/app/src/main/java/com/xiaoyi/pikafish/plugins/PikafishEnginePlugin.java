@@ -12,6 +12,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -28,6 +29,7 @@ public class PikafishEnginePlugin extends Plugin {
     private BufferedReader engineOutput;
     private ExecutorService executor;
     private boolean isRunning = false;
+    private Thread outputThread;
     
     @Override
     public void load() {
@@ -46,31 +48,20 @@ public class PikafishEnginePlugin extends Plugin {
         
         executor.execute(() -> {
             try {
-                // 获取原生库路径
-                String nativeLibraryDir = getContext().getApplicationInfo().nativeLibraryDir;
-                File engineFile = new File(nativeLibraryDir, "libpikafish.so");
-                
-                Log.d(TAG, "Looking for engine at: " + engineFile.getAbsolutePath());
+                // 从 assets 复制引擎到私有目录
+                File engineFile = new File(getContext().getFilesDir(), "pikafish");
                 
                 if (!engineFile.exists()) {
-                    // 尝试从 jniLibs 目录
-                    File jniDir = new File(getContext().getApplicationInfo().sourceDir);
-                    engineFile = new File(nativeLibraryDir, "libpikafish.so");
-                    
-                    if (!engineFile.exists()) {
-                        // 尝试从 assets 复制
-                        engineFile = new File(getContext().getFilesDir(), "pikafish");
-                        if (!engineFile.exists()) {
-                            copyEngineFromAssets(engineFile);
-                        }
-                    }
+                    copyEngineFromAssets(engineFile);
                 }
                 
                 // 设置可执行权限
                 engineFile.setExecutable(true);
                 engineFile.setReadable(true);
                 
-                Log.d(TAG, "Starting engine from: " + engineFile.getAbsolutePath());
+                Log.d(TAG, "Engine path: " + engineFile.getAbsolutePath());
+                Log.d(TAG, "Engine exists: " + engineFile.exists());
+                Log.d(TAG, "Engine can execute: " + engineFile.canExecute());
                 
                 // 启动引擎进程
                 ProcessBuilder pb = new ProcessBuilder(engineFile.getAbsolutePath());
@@ -148,8 +139,6 @@ public class PikafishEnginePlugin extends Plugin {
     
     @PluginMethod
     public void setMessageCallback(PluginCall call) {
-        // 这个方法用于初始化事件监听
-        // 实际的消息通过 notifyListeners 发送
         call.resolve();
     }
     
@@ -176,14 +165,13 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     private void startOutputListener() {
-        new Thread(() -> {
+        outputThread = new Thread(() -> {
             try {
                 String line;
                 while (isRunning && (line = engineOutput.readLine()) != null) {
                     final String output = line;
                     Log.d(TAG, "Engine output: " + output);
                     
-                    // 通过 Capacitor 的事件系统发送消息
                     JSObject data = new JSObject();
                     data.put("message", output);
                     notifyListeners("engineMessage", data);
@@ -193,26 +181,42 @@ public class PikafishEnginePlugin extends Plugin {
                     Log.e(TAG, "Error reading engine output", e);
                 }
             }
-        }).start();
+        });
+        outputThread.start();
     }
     
     private void copyEngineFromAssets(File destFile) throws IOException {
-        // 从 assets 复制引擎文件
-        try {
-            InputStream is = getContext().getAssets().open("engine/pikafish");
-            java.io.FileOutputStream fos = new java.io.FileOutputStream(destFile);
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = is.read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
+        Log.d(TAG, "Copying engine from assets to: " + destFile.getAbsolutePath());
+        
+        // 尝试打开 assets 中的引擎文件
+        String[] assetNames = {"engine/pikafish", "pikafish", "engine/libpikafish.so"};
+        InputStream is = null;
+        
+        for (String name : assetNames) {
+            try {
+                is = getContext().getAssets().open(name);
+                Log.d(TAG, "Found engine in assets: " + name);
+                break;
+            } catch (IOException e) {
+                Log.d(TAG, "Asset not found: " + name);
             }
-            fos.close();
-            is.close();
-            Log.d(TAG, "Copied engine to: " + destFile.getAbsolutePath());
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to copy engine from assets", e);
-            throw e;
         }
+        
+        if (is == null) {
+            throw new IOException("Engine binary not found in assets");
+        }
+        
+        // 复制到私有目录
+        FileOutputStream fos = new FileOutputStream(destFile);
+        byte[] buffer = new byte[8192];
+        int bytesRead;
+        while ((bytesRead = is.read(buffer)) != -1) {
+            fos.write(buffer, 0, bytesRead);
+        }
+        fos.close();
+        is.close();
+        
+        Log.d(TAG, "Engine copied successfully");
     }
     
     private void cleanup() {
