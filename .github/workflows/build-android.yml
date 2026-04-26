@@ -39,6 +39,14 @@ jobs:
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android --save-dev
           
+      - name: Backup jniLibs
+        run: |
+          # 备份 jniLibs，因为 cap sync 会删除它
+          mkdir -p /tmp/jniLibs_backup
+          cp -r android/app/src/main/jniLibs/* /tmp/jniLibs_backup/ 2>/dev/null || true
+          echo "Backup contents:"
+          ls -la /tmp/jniLibs_backup/arm64-v8a/ || echo "No arm64-v8a backup"
+          
       - name: Add Android platform
         run: |
           npx cap add android || true
@@ -46,22 +54,14 @@ jobs:
           
       - name: Restore jniLibs
         run: |
-          # jniLibs is in the repo, but cap sync might overwrite it
-          # Restore from backup
+          # 恢复 jniLibs
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp -r /tmp/jniLibs_backup/* android/app/src/main/jniLibs/ 2>/dev/null || true
           
-          # Check if we need to restore
-          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libpikafish.so ] || \
-             [ $(stat -c%s android/app/src/main/jniLibs/arm64-v8a/libpikafish.so 2>/dev/null || echo 0) -lt 1000000 ]; then
-            echo "Restoring engine from repo..."
-            # The file should be in the repo already
-            ls -la android/app/src/main/jniLibs/arm64-v8a/ || true
-          fi
-          
-          echo "jniLibs contents:"
+          echo "Restored jniLibs:"
           ls -la android/app/src/main/jniLibs/arm64-v8a/
           
-          # Verify engine size
+          # 验证引擎大小
           ENGINE_SIZE=$(stat -c%s android/app/src/main/jniLibs/arm64-v8a/libpikafish.so 2>/dev/null || echo 0)
           echo "Engine size: $ENGINE_SIZE bytes"
           
@@ -87,6 +87,16 @@ jobs:
           echo ""
           echo "Native libraries:"
           unzip -l $APK | grep "lib/"
+          
+          # 检查 .so 文件大小
+          SO_SIZE=$(unzip -l $APK | grep "libpikafish.so" | awk '{print $1}')
+          echo ""
+          echo "libpikafish.so size in APK: $SO_SIZE bytes"
+          
+          if [ "$SO_SIZE" -lt 1000000 ]; then
+            echo "ERROR: .so file in APK is too small!"
+            exit 1
+          fi
           
       - name: Upload APK
         uses: actions/upload-artifact@v4
