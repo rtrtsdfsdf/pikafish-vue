@@ -15,11 +15,15 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,13 +42,8 @@ public class PikafishEnginePlugin extends Plugin {
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private final AtomicBoolean isReady = new AtomicBoolean(false);
     
-    // 收集调试信息
-    private final List<String> debugMessages = new ArrayList<>();
-    
     private void debug(String msg) {
         Log.d(TAG, msg);
-        debugMessages.add(msg);
-        // 发送调试消息到前端
         JSObject data = new JSObject();
         data.put("message", "[DEBUG] " + msg);
         notifyListeners("engineMessage", data);
@@ -69,36 +68,57 @@ public class PikafishEnginePlugin extends Plugin {
             try {
                 debug("=== Starting engine initialization ===");
                 
-                // 创建引擎工作目录
                 engineWorkDir = new File(getContext().getFilesDir(), "engine");
                 if (!engineWorkDir.exists()) {
                     engineWorkDir.mkdirs();
                 }
                 debug("Work dir: " + engineWorkDir.getAbsolutePath());
                 
-                // 获取引擎文件路径
-                String enginePath = findEngine();
+                // 从 APK 提取引擎
+                File engineFile = extractEngineFromApk();
                 
-                if (enginePath == null) {
-                    throw new RuntimeException("Engine library not found. See debug logs for details.");
+                if (engineFile == null || !engineFile.exists()) {
+                    throw new RuntimeException("Failed to extract engine from APK");
                 }
                 
-                debug("Using engine: " + enginePath);
+                debug("Engine extracted: " + engineFile.getAbsolutePath());
+                debug("Engine size: " + engineFile.length());
+                debug("Can execute: " + engineFile.canExecute());
                 
-                // 启动引擎
-                debug("Starting process...");
-                engineProcess = Runtime.getRuntime().exec(new String[]{enginePath}, null, engineWorkDir);
+                // 尝试设置执行权限
+                if (!engineFile.canExecute()) {
+                    // 方法1：Java API
+                    engineFile.setExecutable(true, false);
+                    debug("setExecutable result: " + engineFile.canExecute());
+                    
+                    // 方法2：chmod
+                    if (!engineFile.canExecute()) {
+                        try {
+                            Process chmod = Runtime.getRuntime().exec(new String[]{
+                                "chmod", "755", engineFile.getAbsolutePath()
+                            });
+                            chmod.waitFor();
+                            debug("chmod result: " + engineFile.canExecute());
+                        } catch (Exception e) {
+                            debug("chmod failed: " + e.getMessage());
+                        }
+                    }
+                }
+                
+                if (!engineFile.canExecute()) {
+                    throw new RuntimeException("Cannot set executable permission");
+                }
+                
+                debug("Starting engine process...");
+                engineProcess = Runtime.getRuntime().exec(new String[]{engineFile.getAbsolutePath()}, null, engineWorkDir);
                 
                 engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream()));
                 engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream()));
                 
                 isRunning.set(true);
-                debug("Process started, waiting for output...");
+                debug("Process started!");
                 
-                // 启动输出监听线程
                 startOutputListener();
-                
-                // 等待引擎启动
                 Thread.sleep(500);
                 
                 Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -124,107 +144,78 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
-     * 查找引擎文件
+     * 从 APK 中提取引擎文件
      */
-    private String findEngine() {
-        debug("--- Searching for engine ---");
-        
-        ApplicationInfo appInfo = getContext().getApplicationInfo();
-        String nativeLibDir = appInfo.nativeLibraryDir;
-        
-        debug("Application info:");
-        debug("  sourceDir: " + appInfo.sourceDir);
-        debug("  nativeLibraryDir: " + nativeLibDir);
-        debug("  device ABI: " + Build.SUPPORTED_ABIS[0]);
-        
-        // 方法1：直接检查 nativeLibraryDir
-        File libDir = new File(nativeLibDir);
-        debug("Method 1: Check nativeLibraryDir");
-        debug("  Path: " + nativeLibDir);
-        debug("  Exists: " + libDir.exists());
-        debug("  IsDirectory: " + libDir.isDirectory());
-        
-        if (libDir.exists() && libDir.isDirectory()) {
-            File[] files = libDir.listFiles();
-            debug("  Files count: " + (files != null ? files.length : "null"));
-            if (files != null) {
-                for (File f : files) {
-                    debug("    " + f.getName() + " - size:" + f.length() + " exec:" + f.canExecute() + " read:" + f.canRead());
-                    if (f.getName().contains("pikafish") && f.canExecute()) {
-                        debug("  FOUND: " + f.getAbsolutePath());
-                        return f.getAbsolutePath();
-                    }
-                }
-            }
-        }
-        
-        // 方法2：检查父目录的其他子目录
-        File parentDir = libDir.getParentFile();
-        debug("Method 2: Check parent directory");
-        debug("  Parent: " + (parentDir != null ? parentDir.getAbsolutePath() : "null"));
-        
-        if (parentDir != null && parentDir.exists()) {
-            File[] subdirs = parentDir.listFiles();
-            debug("  Subdirs count: " + (subdirs != null ? subdirs.length : "null"));
-            if (subdirs != null) {
-                for (File subdir : subdirs) {
-                    debug("    Subdir: " + subdir.getName());
-                    File engine = new File(subdir, "libpikafish.so");
-                    if (engine.exists()) {
-                        debug("      Found libpikafish.so - size:" + engine.length() + " exec:" + engine.canExecute());
-                        if (engine.canExecute()) {
-                            debug("  FOUND: " + engine.getAbsolutePath());
-                            return engine.getAbsolutePath();
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 方法3：检查 APK 中的 lib 目录
-        debug("Method 3: Check APK structure");
-        String apkPath = appInfo.sourceDir;
-        debug("  APK: " + apkPath);
-        
-        // 列出 APK 中的 lib 目录
+    private File extractEngineFromApk() {
         try {
-            Process process = Runtime.getRuntime().exec(new String[]{"unzip", "-l", apkPath});
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            int count = 0;
-            while ((line = reader.readLine()) != null && count < 50) {
-                if (line.contains("lib/") && line.contains(".so")) {
-                    debug("  APK content: " + line.trim());
-                    count++;
+            String apkPath = getContext().getPackageResourcePath();
+            debug("APK path: " + apkPath);
+            
+            File targetFile = new File(getContext().getFilesDir(), "pikafish");
+            debug("Target: " + targetFile.getAbsolutePath());
+            
+            // 如果已存在且大小正确，直接返回
+            if (targetFile.exists() && targetFile.length() > 1000000) {
+                debug("Using cached engine");
+                return targetFile;
+            }
+            
+            // 使用 ZipFile 提取
+            ZipFile zipFile = new ZipFile(apkPath);
+            
+            // 尝试不同的 ABI 路径
+            String[] possiblePaths = {
+                "lib/arm64-v8a/libpikafish.so",
+                "lib/arm64/libpikafish.so",
+                "lib/armeabi-v7a/libpikafish.so"
+            };
+            
+            ZipEntry entry = null;
+            for (String path : possiblePaths) {
+                entry = zipFile.getEntry(path);
+                if (entry != null) {
+                    debug("Found in APK: " + path);
+                    break;
                 }
             }
-            process.waitFor();
-        } catch (Exception e) {
-            debug("  Failed to list APK: " + e.getMessage());
-        }
-        
-        // 方法4：尝试使用 app_lib 目录（某些设备的特殊路径）
-        String appLibPath = "/data/app-lib/" + getContext().getPackageName();
-        File appLibDir = new File(appLibPath);
-        debug("Method 4: Check app_lib");
-        debug("  Path: " + appLibPath);
-        debug("  Exists: " + appLibDir.exists());
-        
-        if (appLibDir.exists()) {
-            File[] files = appLibDir.listFiles();
-            if (files != null) {
-                for (File f : files) {
-                    debug("    " + f.getName());
-                    if (f.getName().contains("pikafish") && f.canExecute()) {
-                        debug("  FOUND: " + f.getAbsolutePath());
-                        return f.getAbsolutePath();
+            
+            if (entry == null) {
+                debug("Engine not found in APK, listing all .so files:");
+                java.util.Enumeration<? extends ZipEntry> entries = zipFile.entries();
+                while (entries.hasMoreElements()) {
+                    ZipEntry e = entries.nextElement();
+                    if (e.getName().endsWith(".so")) {
+                        debug("  " + e.getName() + " (" + e.getSize() + " bytes)");
                     }
                 }
+                zipFile.close();
+                return null;
             }
+            
+            // 提取文件
+            debug("Extracting " + entry.getName() + " (" + entry.getSize() + " bytes)");
+            InputStream is = zipFile.getInputStream(entry);
+            FileOutputStream fos = new FileOutputStream(targetFile);
+            
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+            }
+            
+            fos.close();
+            is.close();
+            zipFile.close();
+            
+            debug("Extraction complete, size: " + targetFile.length());
+            
+            return targetFile;
+            
+        } catch (Exception e) {
+            debug("Extraction failed: " + e.getMessage());
+            e.printStackTrace();
+            return null;
         }
-        
-        debug("--- Engine NOT FOUND ---");
-        return null;
     }
     
     @PluginMethod
