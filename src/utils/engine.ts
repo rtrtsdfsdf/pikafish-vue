@@ -66,10 +66,8 @@ export async function initEngine(onMessage: MessageCallback): Promise<boolean> {
     isInitialized = true;
     console.log('[Engine] Initialized successfully');
     
-    // 发送 UCI 命令
-    await sendCommand('uci');
-    
-    // 等待 isready 返回 readyok
+    // Java 插件已经完成了 UCI 初始化和 NNUE 加载
+    // 这里只需要等待 readyok
     await waitForReady();
     
     return true;
