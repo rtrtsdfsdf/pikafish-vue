@@ -130,8 +130,8 @@ public class PikafishEnginePlugin extends Plugin {
                     debug("NNUE length: " + nnueFile.length());
                     debug("NNUE readable: " + nnueFile.canRead());
                     
-                    // 使用完整路径
-                    String evalFilePath = nnueFile.getAbsolutePath();
+                    // 使用相对路径（引擎会在工作目录查找）
+                    String evalFilePath = "pikafish.nnue";
                     String evalFileCmd = "setoption name EvalFile value " + evalFilePath;
                     debug("Full command: " + evalFileCmd);
                     debug("Command length: " + evalFileCmd.length());
@@ -175,8 +175,8 @@ public class PikafishEnginePlugin extends Plugin {
         try {
             String nnueName = "pikafish.nnue";
             
-            // 使用 filesDir（应用私有目录，可写）
-            File targetFile = new File(getContext().getFilesDir(), nnueName);
+            // 复制到工作目录（引擎会在工作目录查找 NNUE）
+            File targetFile = new File(engineWorkDir, nnueName);
             
             debug("NNUE target path: " + targetFile.getAbsolutePath());
             debug("Files dir: " + getContext().getFilesDir().getAbsolutePath());
