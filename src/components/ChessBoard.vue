@@ -42,13 +42,19 @@
           {{ store.currentTurn === 'red' ? '🔴 红方' : '⚫ 黑方' }}走棋
         </div>
         
+        <!-- 引擎状态 -->
+        <div class="engine-status" :class="{ 'error': engineError }">
+          <div class="status-label">引擎状态:</div>
+          <div class="status-value">{{ engineStatus }}</div>
+        </div>
+        
         <div v-if="store.engineInfo" class="engine-info">
           <div>深度: {{ store.engineInfo.depth }}</div>
-          <div v-if="store.engineInfo.score">
-            分数: {{ store.engineInfo.score > 0 ? '+' : '' }}{{ (store.engineInfo.score / 100).toFixed(2) }}
+          <div v-if="store.engineInfo.score !== undefined">
+            分数: {{ formatScore(store.engineInfo.score, store.engineInfo.scoreType) }}
           </div>
-          <div v-if="store.engineInfo.mate">
-            杀棋: {{ store.engineInfo.mate }} 步
+          <div v-if="store.engineInfo.pv && store.engineInfo.pv.length > 0" class="pv-line">
+            推荐: {{ store.engineInfo.pv.slice(0, 4).join(' ') }}
           </div>
         </div>
         
@@ -67,6 +73,24 @@
           <button @click="store.resetGame()">
             🔄 重开
           </button>
+          <button @click="toggleDebug()" class="debug-btn">
+            {{ showDebug ? '隐藏日志' : '显示日志' }}
+          </button>
+        </div>
+        
+        <!-- 调试日志 -->
+        <div v-if="showDebug" class="debug-panel">
+          <div class="debug-header">
+            <span>调试日志</span>
+            <button @click="clearLogs()" class="clear-btn">清空</button>
+          </div>
+          <div class="debug-logs" ref="debugLogsRef">
+            <div v-for="(log, index) in debugLogs" :key="index" 
+                 :class="['log-line', log.level]">
+              <span class="log-time">{{ log.time }}</span>
+              <span class="log-msg">{{ log.message }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -74,17 +98,118 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { ref, onMounted, nextTick, watch } from 'vue';
 import { useChessStore } from '@/stores/chess';
 import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic';
+import { Capacitor } from '@capacitor/core';
 
 const store = useChessStore();
 
+// 调试相关
+const showDebug = ref(false);
+const debugLogs = ref<Array<{ time: string; level: string; message: string }>>([]);
+const debugLogsRef = ref<HTMLElement | null>(null);
+
+// 引擎状态
+const engineStatus = ref('未初始化');
+const engineError = ref(false);
+
+// 拦截 console.log
+function setupLogging() {
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  
+  console.log = (...args) => {
+    originalLog.apply(console, args);
+    addLog('info', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+  };
+  
+  console.error = (...args) => {
+    originalError.apply(console, args);
+    addLog('error', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+    engineError.value = true;
+  };
+  
+  console.warn = (...args) => {
+    originalWarn.apply(console, args);
+    addLog('warn', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+  };
+}
+
+function addLog(level: string, message: string) {
+  const now = new Date();
+  const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+  
+  // 截断过长的消息
+  const truncatedMsg = message.length > 200 ? message.substring(0, 200) + '...' : message;
+  
+  debugLogs.value.push({ time, level, message: truncatedMsg });
+  
+  // 限制日志数量
+  if (debugLogs.value.length > 100) {
+    debugLogs.value.shift();
+  }
+  
+  // 自动滚动到底部
+  nextTick(() => {
+    if (debugLogsRef.value) {
+      debugLogsRef.value.scrollTop = debugLogsRef.value.scrollHeight;
+    }
+  });
+  
+  // 更新引擎状态
+  if (message.includes('[Engine]') || message.includes('[Store]')) {
+    if (message.includes('initialized') || message.includes('ready')) {
+      engineStatus.value = '已就绪';
+      engineError.value = false;
+    } else if (message.includes('failed') || message.includes('error')) {
+      engineStatus.value = '错误: ' + message;
+      engineError.value = true;
+    } else if (message.includes('Analyzing')) {
+      engineStatus.value = '分析中...';
+    }
+  }
+}
+
+function toggleDebug() {
+  showDebug.value = !showDebug.value;
+}
+
+function clearLogs() {
+  debugLogs.value = [];
+}
+
+function formatScore(score: number, scoreType?: 'cp' | 'mate'): string {
+  if (scoreType === 'mate') {
+    return `杀棋 ${score > 0 ? '+' : ''}${score} 步`;
+  }
+  const pawns = (score / 100).toFixed(2);
+  return `${score > 0 ? '+' : ''}${pawns}`;
+}
+
 onMounted(async () => {
-  try {
-    await store.initGameEngine();
-  } catch (e) {
-    console.log('Engine init skipped');
+  // 设置日志拦截
+  setupLogging();
+  
+  // 添加平台信息
+  console.log('[App] Platform:', Capacitor.getPlatform());
+  console.log('[App] Is Native:', Capacitor.isNativePlatform());
+  
+  if (Capacitor.isNativePlatform()) {
+    console.log('[App] Initializing engine...');
+    engineStatus.value = '初始化中...';
+    
+    try {
+      await store.initGameEngine();
+      console.log('[App] Engine init completed');
+    } catch (e) {
+      console.error('[App] Engine init failed:', e);
+      engineStatus.value = '初始化失败: ' + (e as Error).message;
+    }
+  } else {
+    console.log('[App] Running in browser, engine disabled');
+    engineStatus.value = '浏览器模式 (无引擎)';
   }
 });
 
@@ -252,6 +377,29 @@ function handleCellClick(row: number, col: number) {
   margin-bottom: 12px;
 }
 
+.engine-status {
+  padding: 10px;
+  background: #e3f2fd;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.engine-status.error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.status-label {
+  font-weight: bold;
+}
+
+.status-value {
+  font-size: 12px;
+  word-break: break-all;
+}
+
 .engine-info {
   padding: 10px;
   background: #e8f5e9;
@@ -262,6 +410,12 @@ function handleCellClick(row: number, col: number) {
 
 .engine-info div {
   margin: 4px 0;
+}
+
+.pv-line {
+  font-family: monospace;
+  font-size: 12px;
+  color: #1565c0;
 }
 
 .thinking {
@@ -286,13 +440,14 @@ function handleCellClick(row: number, col: number) {
   display: flex;
   gap: 10px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .controls button {
   flex: 1;
-  max-width: 150px;
-  padding: 12px 20px;
-  font-size: 16px;
+  max-width: 120px;
+  padding: 12px 16px;
+  font-size: 14px;
   cursor: pointer;
   background: #4caf50;
   color: white;
@@ -309,5 +464,73 @@ function handleCellClick(row: number, col: number) {
 .controls button:disabled {
   background: #bbb;
   cursor: not-allowed;
+}
+
+.debug-btn {
+  background: #2196f3 !important;
+}
+
+.debug-panel {
+  margin-top: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.debug-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.clear-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: #ff5722;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.debug-logs {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #fafafa;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.log-line {
+  padding: 2px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.log-line.error {
+  color: #c62828;
+  background: #ffebee;
+}
+
+.log-line.warn {
+  color: #f57c00;
+  background: #fff3e0;
+}
+
+.log-line.info {
+  color: #1565c0;
+}
+
+.log-time {
+  color: #999;
+  margin-right: 8px;
+}
+
+.log-msg {
+  word-break: break-all;
 }
 </style>
