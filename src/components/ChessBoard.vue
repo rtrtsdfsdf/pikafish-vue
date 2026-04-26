@@ -176,7 +176,8 @@ function addLog(level: string, message: string) {
   const now = new Date();
   const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
   
-  const truncatedMsg = message.length > 300 ? message.substring(0, 300) + '...' : message;
+  // 不截断，显示完整消息
+  const truncatedMsg = message;
   
   debugLogs.value.push({ time, level, message: truncatedMsg });
   
