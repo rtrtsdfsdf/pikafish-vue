@@ -407,7 +407,12 @@ public class PikafishEnginePlugin extends Plugin {
                     JSObject result = new JSObject();
                     result.put("success", false);
                     result.put("error", e.getMessage());
-
+                    call.resolve(result);
+                });
+            }
+        });
+    }
+    
     /**
      * 复制 NNUE 到 nativeLibraryDir（引擎子进程可以读取）
      */
