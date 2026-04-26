@@ -23,9 +23,9 @@ export interface Move {
 export interface EngineInfo {
   depth: number;
   score?: number;
-  mate?: number;
+  scoreType?: 'cp' | 'mate';  // 分数类型：centipawns 或 mate
   nodes: number;
-  nps: number;
+  nps?: number;  // 每秒节点数（可选）
   pv: string[];
   time: number;
 }

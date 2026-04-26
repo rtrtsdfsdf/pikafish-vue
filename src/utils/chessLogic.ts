@@ -316,8 +316,21 @@ export function makeMove(board: string[][], from: Position, to: Position): strin
   return newBoard;
 }
 
-// 棋盘转 FEN
-export function boardToFen(board: string[][]): string {
+/**
+ * 棋盘转 FEN（中国象棋格式）
+ * 格式：rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1
+ * 
+ * @param board 棋盘
+ * @param turn 当前回合 ('red' | 'black')
+ * @param halfMoves 半回合数（可选）
+ * @param fullMoves 完整回合数（可选）
+ */
+export function boardToFen(
+  board: string[][], 
+  turn: 'red' | 'black' = 'red',
+  halfMoves: number = 0,
+  fullMoves: number = 1
+): string {
   const fenRows: string[] = [];
   
   for (const row of board) {
@@ -343,7 +356,11 @@ export function boardToFen(board: string[][]): string {
     fenRows.push(fenRow);
   }
   
-  return fenRows.join('/');
+  // 中国象棋 FEN：回合标记 w=红方(大写), b=黑方(小写)
+  const turnChar = turn === 'red' ? 'w' : 'b';
+  
+  // 完整 FEN 格式
+  return `${fenRows.join('/')} ${turnChar} - - ${halfMoves} ${fullMoves}`;
 }
 
 // 走法转 UCI 格式
