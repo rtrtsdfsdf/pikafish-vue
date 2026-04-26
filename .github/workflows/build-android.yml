@@ -15,11 +15,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: 'npm'
           
-      - name: Install dependencies
+      - name: Clean install
         run: |
-          npm install --include=dev
+          rm -rf node_modules package-lock.json
+          npm install
           
       - name: Build Vue project
         run: |
@@ -34,9 +36,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         
+      - name: Install Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android --save-dev
+          
       - name: Add Android platform
         run: |
-          npx cap add android
+          npx cap add android || true
           npx cap sync android
           
       - name: Build APK
