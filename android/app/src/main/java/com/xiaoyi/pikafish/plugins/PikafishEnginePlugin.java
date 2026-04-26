@@ -61,47 +61,23 @@ public class PikafishEnginePlugin extends Plugin {
                     engineWorkDir.mkdirs();
                 }
                 
-                // 查找或提取引擎库文件
-                File engineFile = findOrExtractEngine();
+                // 获取引擎文件路径
+                String enginePath = getEnginePath();
                 
-                if (engineFile == null || !engineFile.exists()) {
+                if (enginePath == null) {
                     throw new RuntimeException("Engine library not found");
                 }
                 
-                // 确保文件有执行权限
-                if (!engineFile.canExecute()) {
-                    boolean success = engineFile.setExecutable(true, false);
-                    Log.d(TAG, "Set executable: " + success + ", canExecute: " + engineFile.canExecute());
-                    
-                    // 如果 setExecutable 失败，尝试使用 chmod
-                    if (!engineFile.canExecute()) {
-                        try {
-                            Process chmod = Runtime.getRuntime().exec(new String[]{
-                                "chmod", "755", engineFile.getAbsolutePath()
-                            });
-                            chmod.waitFor();
-                            Log.d(TAG, "chmod result, canExecute: " + engineFile.canExecute());
-                        } catch (Exception e) {
-                            Log.e(TAG, "chmod failed", e);
-                        }
-                    }
-                }
+                Log.d(TAG, "Engine path: " + enginePath);
+                Log.d(TAG, "Work dir: " + engineWorkDir.getAbsolutePath());
                 
-                if (!engineFile.canExecute()) {
-                    throw new RuntimeException("Cannot set executable permission on " + engineFile.getAbsolutePath());
-                }
+                // 使用 Runtime.exec() 而不是 ProcessBuilder
+                // 这在某些 Android 版本上更可靠
+                String[] envp = new String[0];
+                String[] cmd = new String[]{enginePath};
                 
-                Log.d(TAG, "Using engine: " + engineFile.getAbsolutePath());
-                Log.d(TAG, "Engine size: " + engineFile.length() + " bytes");
-                Log.d(TAG, "Can execute: " + engineFile.canExecute());
-                Log.d(TAG, "Can read: " + engineFile.canRead());
+                engineProcess = Runtime.getRuntime().exec(cmd, envp, engineWorkDir);
                 
-                // 启动引擎进程
-                ProcessBuilder pb = new ProcessBuilder(engineFile.getAbsolutePath());
-                pb.directory(engineWorkDir);
-                pb.redirectErrorStream(true);
-                
-                engineProcess = pb.start();
                 engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream()));
                 engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream()));
                 
@@ -136,119 +112,69 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
-     * 查找或提取引擎库文件
+     * 获取引擎可执行文件路径
+     * Android 10+ 不允许执行 filesDir 中的文件，必须使用 nativeLibraryDir
      */
-    private File findOrExtractEngine() throws IOException {
+    private String getEnginePath() {
+        // 方法1：直接使用 nativeLibraryDir（推荐）
         String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
-        Log.d(TAG, "nativeLibraryDir: " + nativeLibDir);
-        Log.d(TAG, "Primary ABI: " + Build.SUPPORTED_ABIS[0]);
+        File nativeEngine = new File(nativeLibDir, "libpikafish.so");
         
-        // 目标文件（缓存）
-        File targetFile = new File(getContext().getFilesDir(), "libpikafish.so");
+        Log.d(TAG, "Method 1 - nativeLibraryDir: " + nativeLibDir);
+        Log.d(TAG, "Native engine exists: " + nativeEngine.exists());
+        Log.d(TAG, "Native engine canExecute: " + nativeEngine.canExecute());
         
-        // 如果缓存文件存在且大小正确，直接使用
-        if (targetFile.exists() && targetFile.length() > 1000000) {
-            Log.d(TAG, "Using cached engine: " + targetFile.getAbsolutePath());
-            return targetFile;
+        if (nativeEngine.exists() && nativeEngine.canExecute()) {
+            return nativeEngine.getAbsolutePath();
         }
         
-        // 尝试从 nativeLibraryDir 复制
-        File sourceFile = new File(nativeLibDir, "libpikafish.so");
-        Log.d(TAG, "Checking native lib: " + sourceFile.getAbsolutePath() + " -> exists: " + sourceFile.exists());
-        
-        if (sourceFile.exists()) {
-            copyFile(sourceFile, targetFile);
-            Log.d(TAG, "Copied from native lib dir");
-            return targetFile;
-        }
-        
-        // 尝试其他路径
-        String[] altPaths = {
-            nativeLibDir.replace("/lib/arm64", "/lib/arm64-v8a") + "/libpikafish.so",
-            getContext().getApplicationInfo().sourceDir
-        };
-        
-        for (String path : altPaths) {
-            Log.d(TAG, "Checking alternative: " + path);
-            File f = new File(path);
-            if (f.exists()) {
-                if (path.endsWith(".so")) {
-                    copyFile(f, targetFile);
-                    return targetFile;
-                } else if (path.endsWith(".apk")) {
-                    // 从 APK 提取
-                    extractFromApk(path, targetFile);
-                    if (targetFile.exists() && targetFile.length() > 1000000) {
-                        return targetFile;
+        // 方法2：尝试列出 nativeLibraryDir 目录内容
+        File libDir = new File(nativeLibDir);
+        if (libDir.exists() && libDir.isDirectory()) {
+            Log.d(TAG, "Listing " + nativeLibDir + ":");
+            File[] files = libDir.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    Log.d(TAG, "  " + f.getName() + " - canExecute: " + f.canExecute());
+                    if (f.getName().contains("pikafish")) {
+                        return f.getAbsolutePath();
                     }
                 }
             }
         }
         
-        // 最后尝试从 APK 提取
-        String apkPath = getContext().getPackageResourcePath();
-        Log.d(TAG, "Trying to extract from APK: " + apkPath);
-        extractFromApk(apkPath, targetFile);
-        
-        if (targetFile.exists() && targetFile.length() > 1000000) {
-            return targetFile;
-        }
-        
-        return null;
-    }
-    
-    /**
-     * 从 APK 中提取引擎
-     */
-    private void extractFromApk(String apkPath, File targetFile) throws IOException {
-        Log.d(TAG, "Extracting from APK: " + apkPath);
-        
-        // 使用 unzip 提取
-        File tempDir = new File(getContext().getCacheDir(), "extract");
-        tempDir.mkdirs();
-        
-        Process process = Runtime.getRuntime().exec(new String[]{
-            "unzip", "-o", apkPath, "lib/arm64-v8a/libpikafish.so", "-d", tempDir.getAbsolutePath()
-        });
-        
-        try {
-            int exitCode = process.waitFor();
-            Log.d(TAG, "Unzip exit code: " + exitCode);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        
-        // 移动到目标位置
-        File extracted = new File(tempDir, "lib/arm64-v8a/libpikafish.so");
-        if (extracted.exists()) {
-            copyFile(extracted, targetFile);
-            Log.d(TAG, "Extracted engine, size: " + targetFile.length());
-        } else {
-            Log.e(TAG, "Extraction failed, file not found at: " + extracted.getAbsolutePath());
-        }
-    }
-    
-    /**
-     * 复制文件
-     */
-    private void copyFile(File src, File dst) throws IOException {
-        Log.d(TAG, "Copying " + src.getAbsolutePath() + " -> " + dst.getAbsolutePath());
-        
-        try (FileInputStream in = new FileInputStream(src);
-             FileOutputStream out = new FileOutputStream(dst)) {
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = in.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
+        // 方法3：检查父目录
+        File parentDir = libDir.getParentFile();
+        if (parentDir != null && parentDir.exists()) {
+            Log.d(TAG, "Checking parent dir: " + parentDir.getAbsolutePath());
+            File[] subdirs = parentDir.listFiles();
+            if (subdirs != null) {
+                for (File subdir : subdirs) {
+                    Log.d(TAG, "  Subdir: " + subdir.getName());
+                    File engine = new File(subdir, "libpikafish.so");
+                    if (engine.exists()) {
+                        Log.d(TAG, "  Found engine at: " + engine.getAbsolutePath());
+                        Log.d(TAG, "  Can execute: " + engine.canExecute());
+                        if (engine.canExecute()) {
+                            return engine.getAbsolutePath();
+                        }
+                    }
+                }
             }
         }
         
-        // 设置权限
-        dst.setReadable(true, false);
-        dst.setWritable(true, false);
-        dst.setExecutable(true, false);
+        // 方法4：使用 linker 执行（Android 特殊方式）
+        File linker = new File("/system/bin/linker64");
+        if (!linker.exists()) {
+            linker = new File("/system/bin/linker");
+        }
         
-        Log.d(TAG, "Copy done, canExecute: " + dst.canExecute());
+        if (linker.exists() && nativeEngine.exists()) {
+            Log.d(TAG, "Trying linker method with: " + linker.getAbsolutePath());
+            return linker.getAbsolutePath() + " " + nativeEngine.getAbsolutePath();
+        }
+        
+        return null;
     }
     
     @PluginMethod
