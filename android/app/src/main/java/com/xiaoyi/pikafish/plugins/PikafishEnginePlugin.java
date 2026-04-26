@@ -84,13 +84,6 @@ public class PikafishEnginePlugin extends Plugin {
                     throw new RuntimeException("Engine not found in nativeLibraryDir");
                 }
                 
-                // 尝试在 nativeLibraryDir 中查找 NNUE
-                File nnueInLibDir = findNnueInNativeLibDir();
-                if (nnueInLibDir != null) {
-                    debug("Found NNUE in nativeLibraryDir: " + nnueInLibDir.getAbsolutePath());
-                    nnueFile = nnueInLibDir;  // 优先使用 nativeLibraryDir 中的 NNUE
-                }
-                
                 debug("Using engine: " + enginePath);
                 
                 // 启动引擎
@@ -157,6 +150,22 @@ public class PikafishEnginePlugin extends Plugin {
                 
                 // 发送 EvalFile 命令，显式指定 NNUE 路径
                 if (nnueFile != null) {
+                    debug("NNUE file path: " + nnueFile.getAbsolutePath());
+                    debug("NNUE file exists: " + nnueFile.exists());
+                    debug("NNUE file canRead: " + nnueFile.canRead());
+                    debug("NNUE file length: " + nnueFile.length());
+                    
+                    // 尝试读取文件头来验证文件是否有效
+                    try {
+                        java.io.FileInputStream fis = new java.io.FileInputStream(nnueFile);
+                        byte[] header = new byte[4];
+                        int read = fis.read(header);
+                        fis.close();
+                        debug("NNUE header bytes: " + (read > 0 ? java.util.Arrays.toString(header) : "empty"));
+                    } catch (Exception e) {
+                        debug("Failed to read NNUE header: " + e.getMessage());
+                    }
+                    
                     debug("Sending EvalFile command: " + nnueFile.getAbsolutePath());
                     engineWriter.write("setoption name EvalFile value " + nnueFile.getAbsolutePath() + "\n");
                     engineWriter.flush();
