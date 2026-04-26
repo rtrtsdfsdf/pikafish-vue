@@ -122,34 +122,13 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 debug("Waited " + (waitCount * 100) + "ms for uciok, received: " + uciOkReceived.get());
                 
-                // 加载 NNUE 模型（必须在 uciok 之后、isready 之前）
+                // 不需要发送 EvalFile 命令！
+                // 引擎会在启动时自动从工作目录加载 pikafish.nnue
+                // 只要 NNUE 文件在工作目录中，引擎就能找到它
                 if (nnueFile != null) {
-                    debug("Loading NNUE model...");
-                    debug("NNUE file: " + nnueFile.getAbsolutePath());
+                    debug("NNUE file in work dir: " + nnueFile.getAbsolutePath());
                     debug("NNUE exists: " + nnueFile.exists());
-                    debug("NNUE length: " + nnueFile.length());
-                    debug("NNUE readable: " + nnueFile.canRead());
-                    debug("Work dir: " + engineWorkDir.getAbsolutePath());
-                    
-                    // 列出工作目录中的文件
-                    String[] workDirFiles = engineWorkDir.list();
-                    if (workDirFiles != null) {
-                        for (String f : workDirFiles) {
-                            debug("  Work dir file: " + f);
-                        }
-                    }
-                    
-                    // 使用绝对路径
-                    String evalFilePath = nnueFile.getAbsolutePath();
-                    String evalFileCmd = "setoption name EvalFile value " + evalFilePath;
-                    debug("Full command: " + evalFileCmd);
-                    debug("Command length: " + evalFileCmd.length());
-                    engineWriter.write(evalFileCmd + "\n");
-                    engineWriter.flush();
-                    debug("Command flushed to engine");
-                    Thread.sleep(2000);  // 给引擎足够时间加载 NNUE
-                    
-                    debug("EvalFile command sent, waiting for load...");
+                    debug("Engine will auto-load from work directory");
                 }
                 
                 engineWriter.write("isready\n");
