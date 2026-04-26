@@ -467,14 +467,6 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     @PluginMethod
-    public void sendCommand(PluginCall call) {
-                    call.resolve(result);
-                });
-            }
-        });
-    }
-    
-    @PluginMethod
     public void setMessageCallback(PluginCall call) {
         call.resolve();
     }
