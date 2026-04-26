@@ -3,6 +3,7 @@ apply plugin: 'com.android.application'
 android {
     namespace = "com.xiaoyi.pikafish"
     compileSdk = rootProject.ext.compileSdkVersion
+    
     defaultConfig {
         applicationId "com.xiaoyi.pikafish"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -10,17 +11,17 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        aaptOptions {
-             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
-             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        
+        // 支持 ARM64
+        ndk {
+            abiFilters 'arm64-v8a'
         }
         
-        // 支持 ARM64 和 ARMv7
-        ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        aaptOptions {
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    
     buildTypes {
         release {
             minifyEnabled false
@@ -28,10 +29,17 @@ android {
         }
     }
     
-    // 确保 jniLibs 被正确打包
+    // 关键：确保 jniLibs 被正确打包
     sourceSets {
         main {
             jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+    
+    // 禁用默认的 native 库打包，使用我们的 jniLibs
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 }
