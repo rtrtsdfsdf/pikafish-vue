@@ -84,6 +84,13 @@ public class PikafishEnginePlugin extends Plugin {
                     throw new RuntimeException("Engine not found in nativeLibraryDir");
                 }
                 
+                // 尝试在 nativeLibraryDir 中查找 NNUE
+                File nnueInLibDir = findNnueInNativeLibDir();
+                if (nnueInLibDir != null) {
+                    debug("Found NNUE in nativeLibraryDir: " + nnueInLibDir.getAbsolutePath());
+                    nnueFile = nnueInLibDir;  // 优先使用 nativeLibraryDir 中的 NNUE
+                }
+                
                 debug("Using engine: " + enginePath);
                 
                 // 启动引擎
@@ -323,6 +330,32 @@ public class PikafishEnginePlugin extends Plugin {
         }
         
         debug("Engine not found in nativeLibraryDir");
+        return null;
+    }
+    
+    /**
+     * 在 nativeLibraryDir 中查找 NNUE 文件
+     */
+    private File findNnueInNativeLibDir() {
+        String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
+        File libDir = new File(nativeLibDir);
+        
+        if (libDir.exists() && libDir.isDirectory()) {
+            // 检查是否有 pikafish.nnue
+            File nnueFile = new File(libDir, "pikafish.nnue");
+            if (nnueFile.exists() && nnueFile.canRead()) {
+                debug("Found pikafish.nnue in nativeLibraryDir");
+                return nnueFile;
+            }
+            
+            // 也检查 libpikafish.nnue.so（如果把 NNUE 打包成 .so）
+            File nnueSo = new File(libDir, "libpikafish.nnue.so");
+            if (nnueSo.exists() && nnueSo.canRead()) {
+                debug("Found libpikafish.nnue.so in nativeLibraryDir");
+                return nnueSo;
+            }
+        }
+        
         return null;
     }
     
