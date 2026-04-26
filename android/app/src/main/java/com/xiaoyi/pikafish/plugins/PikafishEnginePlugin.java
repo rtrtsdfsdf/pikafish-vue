@@ -15,10 +15,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.zip.ZipEntry;
@@ -74,43 +72,18 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 debug("Work dir: " + engineWorkDir.getAbsolutePath());
                 
-                // 从 APK 提取引擎
-                File engineFile = extractEngineFromApk();
+                // 查找引擎
+                String enginePath = findEngine();
                 
-                if (engineFile == null || !engineFile.exists()) {
-                    throw new RuntimeException("Failed to extract engine from APK");
+                if (enginePath == null) {
+                    throw new RuntimeException("Engine not found");
                 }
                 
-                debug("Engine extracted: " + engineFile.getAbsolutePath());
-                debug("Engine size: " + engineFile.length());
-                debug("Can execute: " + engineFile.canExecute());
+                debug("Using engine: " + enginePath);
                 
-                // 尝试设置执行权限
-                if (!engineFile.canExecute()) {
-                    // 方法1：Java API
-                    engineFile.setExecutable(true, false);
-                    debug("setExecutable result: " + engineFile.canExecute());
-                    
-                    // 方法2：chmod
-                    if (!engineFile.canExecute()) {
-                        try {
-                            Process chmod = Runtime.getRuntime().exec(new String[]{
-                                "chmod", "755", engineFile.getAbsolutePath()
-                            });
-                            chmod.waitFor();
-                            debug("chmod result: " + engineFile.canExecute());
-                        } catch (Exception e) {
-                            debug("chmod failed: " + e.getMessage());
-                        }
-                    }
-                }
-                
-                if (!engineFile.canExecute()) {
-                    throw new RuntimeException("Cannot set executable permission");
-                }
-                
+                // 启动引擎
                 debug("Starting engine process...");
-                engineProcess = Runtime.getRuntime().exec(new String[]{engineFile.getAbsolutePath()}, null, engineWorkDir);
+                engineProcess = Runtime.getRuntime().exec(new String[]{enginePath}, null, engineWorkDir);
                 
                 engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream()));
                 engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream()));
@@ -144,76 +117,121 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
-     * 从 APK 中提取引擎文件
+     * 查找引擎文件
+     * 优先使用 nativeLibraryDir（有正确的 SELinux 上下文）
      */
-    private File extractEngineFromApk() {
+    private String findEngine() {
+        String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
+        debug("nativeLibraryDir: " + nativeLibDir);
+        
+        // 方法1：直接检查 nativeLibraryDir
+        File libDir = new File(nativeLibDir);
+        if (libDir.exists() && libDir.isDirectory()) {
+            File[] files = libDir.listFiles();
+            debug("nativeLibraryDir files: " + (files != null ? files.length : 0));
+            if (files != null) {
+                for (File f : files) {
+                    debug("  " + f.getName() + " exec:" + f.canExecute());
+                    if (f.getName().contains("pikafish") && f.canExecute()) {
+                        debug("FOUND in nativeLibraryDir: " + f.getAbsolutePath());
+                        return f.getAbsolutePath();
+                    }
+                }
+            }
+        }
+        
+        // 方法2：检查父目录的其他 ABI
+        File parentDir = libDir.getParentFile();
+        if (parentDir != null && parentDir.exists()) {
+            File[] subdirs = parentDir.listFiles();
+            if (subdirs != null) {
+                for (File subdir : subdirs) {
+                    File engine = new File(subdir, "libpikafish.so");
+                    if (engine.exists() && engine.canExecute()) {
+                        debug("FOUND in " + subdir.getName() + ": " + engine.getAbsolutePath());
+                        return engine.getAbsolutePath();
+                    }
+                }
+            }
+        }
+        
+        // 方法3：从 APK 提取（最后的手段，可能因 SELinux 失败）
+        debug("Engine not in nativeLibraryDir, trying to extract from APK...");
+        File extracted = extractFromApk();
+        if (extracted != null && extracted.canExecute()) {
+            return extracted.getAbsolutePath();
+        }
+        
+        return null;
+    }
+    
+    private File extractFromApk() {
         try {
             String apkPath = getContext().getPackageResourcePath();
-            debug("APK path: " + apkPath);
-            
             File targetFile = new File(getContext().getFilesDir(), "pikafish");
-            debug("Target: " + targetFile.getAbsolutePath());
             
-            // 如果已存在且大小正确，直接返回
+            // 缓存检查
             if (targetFile.exists() && targetFile.length() > 1000000) {
-                debug("Using cached engine");
-                return targetFile;
+                debug("Using cached extraction: " + targetFile.length() + " bytes");
+                if (targetFile.canExecute()) {
+                    return targetFile;
+                }
+                // 尝试设置权限
+                targetFile.setExecutable(true, false);
+                try {
+                    Runtime.getRuntime().exec(new String[]{"chmod", "755", targetFile.getAbsolutePath()}).waitFor();
+                } catch (Exception ignored) {}
+                if (targetFile.canExecute()) {
+                    return targetFile;
+                }
+                debug("Cached file not executable, re-extracting...");
             }
             
-            // 使用 ZipFile 提取
+            debug("Extracting from APK: " + apkPath);
             ZipFile zipFile = new ZipFile(apkPath);
             
-            // 尝试不同的 ABI 路径
-            String[] possiblePaths = {
-                "lib/arm64-v8a/libpikafish.so",
-                "lib/arm64/libpikafish.so",
-                "lib/armeabi-v7a/libpikafish.so"
-            };
-            
+            String[] paths = {"lib/arm64-v8a/libpikafish.so", "lib/armeabi-v7a/libpikafish.so"};
             ZipEntry entry = null;
-            for (String path : possiblePaths) {
+            for (String path : paths) {
                 entry = zipFile.getEntry(path);
                 if (entry != null) {
-                    debug("Found in APK: " + path);
+                    debug("Found: " + path);
                     break;
                 }
             }
             
             if (entry == null) {
-                debug("Engine not found in APK, listing all .so files:");
-                java.util.Enumeration<? extends ZipEntry> entries = zipFile.entries();
-                while (entries.hasMoreElements()) {
-                    ZipEntry e = entries.nextElement();
-                    if (e.getName().endsWith(".so")) {
-                        debug("  " + e.getName() + " (" + e.getSize() + " bytes)");
-                    }
-                }
+                debug("Engine not found in APK");
                 zipFile.close();
                 return null;
             }
             
-            // 提取文件
-            debug("Extracting " + entry.getName() + " (" + entry.getSize() + " bytes)");
-            InputStream is = zipFile.getInputStream(entry);
+            // 提取
+            java.io.InputStream is = zipFile.getInputStream(entry);
             FileOutputStream fos = new FileOutputStream(targetFile);
-            
             byte[] buffer = new byte[8192];
             int bytesRead;
             while ((bytesRead = is.read(buffer)) != -1) {
                 fos.write(buffer, 0, bytesRead);
             }
-            
             fos.close();
             is.close();
             zipFile.close();
             
-            debug("Extraction complete, size: " + targetFile.length());
+            debug("Extracted: " + targetFile.length() + " bytes");
             
+            // 设置权限
+            targetFile.setExecutable(true, false);
+            targetFile.setReadable(true, false);
+            try {
+                Runtime.getRuntime().exec(new String[]{"chmod", "755", targetFile.getAbsolutePath()}).waitFor();
+            } catch (Exception ignored) {}
+            
+            debug("Can execute: " + targetFile.canExecute());
             return targetFile;
             
         } catch (Exception e) {
             debug("Extraction failed: " + e.getMessage());
-            e.printStackTrace();
             return null;
         }
     }

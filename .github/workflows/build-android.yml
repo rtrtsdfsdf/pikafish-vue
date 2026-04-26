@@ -44,16 +44,35 @@ jobs:
           npx cap add android || true
           npx cap sync android
           
-      - name: Verify jniLibs
+      - name: Download Pikafish engine
         run: |
-          echo "Checking jniLibs..."
-          ls -la android/app/src/main/jniLibs/arm64-v8a/ || echo "jniLibs not found"
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p android/app/src/main/jniLibs/armeabi-v7a
+          
+          # Download latest Pikafish release
+          curl -L -o pikafish_arm64.zip "https://github.com/official-pikafish/Pikafish/releases/download/2026-01-02/pikafish-2026-01-02-arm64.zip"
+          curl -L -o pikafish_armv7.zip "https://github.com/official-pikafish/Pikafish/releases/download/2026-01-02/pikafish-2026-01-02-armv7.zip"
+          
+          unzip -j pikafish_arm64.zip pikafish -d android/app/src/main/jniLibs/arm64-v8a/
+          mv android/app/src/main/jniLibs/arm64-v8a/pikafish android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
+          
+          unzip -j pikafish_armv7.zip pikafish -d android/app/src/main/jniLibs/armeabi-v7a/
+          mv android/app/src/main/jniLibs/armeabi-v7a/pikafish android/app/src/main/jniLibs/armeabi-v7a/libpikafish.so
+          
+          echo "jniLibs contents:"
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
+          ls -la android/app/src/main/jniLibs/armeabi-v7a/
           
       - name: Build APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+          
+      - name: Verify APK contents
+        run: |
+          echo "Checking APK for .so files:"
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep ".so" || echo "No .so files found!"
           
       - name: Upload APK
         uses: actions/upload-artifact@v4
