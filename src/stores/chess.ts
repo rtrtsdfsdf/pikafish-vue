@@ -22,8 +22,14 @@ import {
 // 自动对弈模式
 export type AutoPlayMode = 'none' | 'red' | 'black' | 'both';
 
+// 日志条目
+export interface LogEntry {
+  time: string;
+  message: string;
+}
+
 export const useChessStore = defineStore('chess', {
-  state: (): GameState & { autoPlayMode: AutoPlayMode } => ({
+  state: (): GameState & { autoPlayMode: AutoPlayMode; logs: LogEntry[] } => ({
     board: INITIAL_BOARD.map(row => [...row]),
     currentTurn: 'red',
     selectedPos: null,
@@ -34,6 +40,7 @@ export const useChessStore = defineStore('chess', {
     gameOver: false,
     winner: null,
     autoPlayMode: 'none',  // 新增：自动对弈模式
+    logs: [],  // 新增：日志数组
   }),
 
   actions: {
@@ -97,10 +104,25 @@ export const useChessStore = defineStore('chess', {
     },
 
     /**
+     * 添加日志
+     */
+    addLog(message: string) {
+      const now = new Date();
+      const time = now.toTimeString().substring(0, 8);
+      this.logs.unshift({ time, message });  // 新日志在最上面
+      
+      // 限制日志数量
+      if (this.logs.length > 100) {
+        this.logs.pop();
+      }
+    },
+
+    /**
      * 处理引擎消息
      */
     handleEngineMessage(msg: EngineMessage) {
-      console.log('[Store] Engine message:', msg.type, msg.raw.substring(0, 50));
+      // 打印所有消息到控制台（会被组件拦截并显示）
+      console.log('[Store] Engine message:', msg.type, msg.raw);
       
       if (msg.type === 'info') {
         const data = msg.data;
