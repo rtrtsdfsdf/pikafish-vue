@@ -77,6 +77,13 @@ public class PikafishEnginePlugin extends Plugin {
                     debug("NNUE model ready: " + nnueFile.getAbsolutePath());
                 }
                 
+                // 尝试复制 NNUE 到 nativeLibraryDir（引擎可以读取）
+                File nnueInLibDir = copyNnueToNativeLibDir();
+                if (nnueInLibDir != null) {
+                    debug("NNUE copied to nativeLibraryDir: " + nnueInLibDir.getAbsolutePath());
+                    nnueFile = nnueInLibDir;  // 使用 nativeLibraryDir 中的 NNUE
+                }
+                
                 // 从 nativeLibraryDir 查找引擎（有正确的 SELinux 上下文）
                 String enginePath = findEngine();
                 
@@ -400,6 +407,62 @@ public class PikafishEnginePlugin extends Plugin {
                     JSObject result = new JSObject();
                     result.put("success", false);
                     result.put("error", e.getMessage());
+
+    /**
+     * 复制 NNUE 到 nativeLibraryDir（引擎子进程可以读取）
+     */
+    private File copyNnueToNativeLibDir() {
+        try {
+            String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
+            File libDir = new File(nativeLibDir);
+            
+            if (!libDir.exists() || !libDir.isDirectory()) {
+                debug("nativeLibraryDir does not exist: " + nativeLibDir);
+                return null;
+            }
+            
+            // 目标文件：pikafish.nnue（不带 .so 后缀）
+            File targetFile = new File(libDir, "pikafish.nnue");
+            
+            debug("Attempting to copy NNUE to: " + targetFile.getAbsolutePath());
+            
+            // 检查是否已存在
+            if (targetFile.exists() && targetFile.length() > 40000000) {
+                debug("NNUE already exists in nativeLibraryDir: " + targetFile.length() + " bytes");
+                return targetFile;
+            }
+            
+            // 从 assets 复制
+            InputStream is = getContext().getAssets().open("engine/pikafish.nnue");
+            FileOutputStream fos = new FileOutputStream(targetFile);
+            
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            long total = 0;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+                total += bytesRead;
+            }
+            
+            fos.close();
+            is.close();
+            
+            // 设置可读权限
+            targetFile.setReadable(true, false);
+            
+            debug("Copied NNUE to nativeLibraryDir: " + total + " bytes");
+            debug("File canRead: " + targetFile.canRead());
+            
+            return targetFile;
+            
+        } catch (Exception e) {
+            debug("Failed to copy NNUE to nativeLibraryDir: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            return null;
+        }
+    }
+    
+    @PluginMethod
+    public void sendCommand(PluginCall call) {
                     call.resolve(result);
                 });
             }
