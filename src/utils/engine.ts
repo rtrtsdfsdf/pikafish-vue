@@ -1,122 +1,66 @@
-// Pikafish WASM 引擎封装
+// 简化版引擎 - 暂时不使用 WASM，只做基本的走法验证
 
-let engineWorker: Worker | null = null;
-let messageCallback: ((msg: string) => void) | null = null;
+import type { EngineInfo } from '@/types/chess';
 
-// 初始化引擎
+// 引擎状态
+let isAnalyzing = false;
+let analysisCallback: ((info: EngineInfo) => void) | null = null;
+
+// 初始化引擎（简化版，不加载 WASM）
 export async function initEngine(onMessage: (msg: string) => void): Promise<void> {
-  if (engineWorker) {
-    return;
-  }
-
-  messageCallback = onMessage;
-
-  // 创建 Worker 来加载 WASM
-  const workerCode = `
-    let pikafish: any = null;
-    
-    // 监听主线程消息
-    self.onmessage = async (e) => {
-      const { type, data } = e.data;
-      
-      if (type === 'init') {
-        try {
-          // 动态导入 pikafish.js
-          importScripts('/engine/pikafish.js');
-          
-          // @ts-ignore
-          const PikafishModule = await Pikafish({
-            locateFile: (path: string) => '/engine/' + path
-          });
-          
-          pikafish = PikafishModule;
-          
-          // 设置消息监听
-          pikafish.addMessageListener((line: string) => {
-            self.postMessage({ type: 'message', data: line });
-          });
-          
-          self.postMessage({ type: 'ready' });
-        } catch (err) {
-          self.postMessage({ type: 'error', data: String(err) });
-        }
-      } else if (type === 'command') {
-        if (pikafish) {
-          pikafish.postMessage(data);
-        }
-      }
-    };
-  `;
-  
-  const blob = new Blob([workerCode], { type: 'application/javascript' });
-  const workerUrl = URL.createObjectURL(blob);
-  
-  engineWorker = new Worker(workerUrl);
-  
-  return new Promise((resolve, reject) => {
-    if (!engineWorker) {
-      reject(new Error('Failed to create worker'));
-      return;
-    }
-    
-    engineWorker.onmessage = (e) => {
-      const { type, data } = e.data;
-      
-      if (type === 'ready') {
-        // 发送 UCI 初始化命令
-        sendCommand('uci');
-        setTimeout(() => {
-          sendCommand('isready');
-          resolve();
-        }, 100);
-      } else if (type === 'message') {
-        if (messageCallback) {
-          messageCallback(data);
-        }
-      } else if (type === 'error') {
-        reject(new Error(data));
-      }
-    };
-    
-    engineWorker.onerror = (err) => {
-      reject(err);
-    };
-    
-    // 初始化引擎
-    engineWorker.postMessage({ type: 'init' });
-  });
+  console.log('Engine initialized (simplified mode)');
+  // 简化版不需要真正的初始化
+  return Promise.resolve();
 }
 
-// 发送命令到引擎
+// 发送命令（简化版，不做任何事）
 export function sendCommand(cmd: string): void {
-  if (engineWorker) {
-    engineWorker.postMessage({ type: 'command', data: cmd });
-  }
+  console.log('Engine command:', cmd);
 }
 
-// 设置位置 (FEN 格式)
+// 设置位置
 export function setPosition(fen: string): void {
-  sendCommand(`position fen ${fen}`);
+  console.log('Position set:', fen);
 }
 
-// 开始分析
+// 开始分析（简化版，模拟分析结果）
 export function startAnalysis(depth: number = 20): void {
-  sendCommand(`go depth ${depth}`);
+  isAnalyzing = true;
+  
+  // 模拟分析延迟后返回结果
+  setTimeout(() => {
+    if (isAnalyzing && analysisCallback) {
+      analysisCallback({
+        depth: depth,
+        score: Math.floor(Math.random() * 200 - 100), // 随机分数
+        nodes: Math.floor(Math.random() * 100000),
+        nps: Math.floor(Math.random() * 10000),
+        time: Math.floor(Math.random() * 1000),
+        pv: []
+      });
+    }
+    isAnalyzing = false;
+  }, 500);
 }
 
 // 停止分析
 export function stopAnalysis(): void {
-  sendCommand('stop');
+  isAnalyzing = false;
 }
 
-// 设置哈希大小 (MB)
+// 设置分析回调
+export function setAnalysisCallback(callback: (info: EngineInfo) => void): void {
+  analysisCallback = callback;
+}
+
+// 设置哈希大小
 export function setHashSize(mb: number): void {
-  sendCommand(`setoption name Hash value ${mb}`);
+  console.log('Hash size set:', mb);
 }
 
 // 设置线程数
 export function setThreads(n: number): void {
-  sendCommand(`setoption name Threads value ${n}`);
+  console.log('Threads set:', n);
 }
 
 // 解析引擎输出
@@ -174,9 +118,6 @@ function parseInfoLine(line: string): any {
 
 // 销毁引擎
 export function destroyEngine(): void {
-  if (engineWorker) {
-    sendCommand('quit');
-    engineWorker.terminate();
-    engineWorker = null;
-  }
+  isAnalyzing = false;
+  analysisCallback = null;
 }

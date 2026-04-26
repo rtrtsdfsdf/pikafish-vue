@@ -5,16 +5,8 @@ import {
   getValidMoves, 
   makeMove, 
   getPieceColor,
-  boardToFen,
-  moveToUci
+  boardToFen
 } from '@/utils/chessLogic';
-import { 
-  initEngine, 
-  sendCommand, 
-  parseEngineLine, 
-  startAnalysis,
-  stopAnalysis
-} from '@/utils/engine';
 
 export const useChessStore = defineStore('chess', {
   state: (): GameState => ({
@@ -30,21 +22,10 @@ export const useChessStore = defineStore('chess', {
   }),
 
   actions: {
-    // 初始化引擎
+    // 初始化引擎（简化版）
     async initGameEngine() {
-      await initEngine((line) => this.handleEngineMessage(line));
-    },
-
-    // 处理引擎消息
-    handleEngineMessage(line: string) {
-      const parsed = parseEngineLine(line);
-      
-      if (parsed.type === 'info') {
-        this.engineInfo = parsed.data as EngineInfo;
-      } else if (parsed.type === 'bestmove') {
-        this.engineThinking = false;
-        // 可以在这里自动执行引擎建议的走法
-      }
+      // 简化版不需要引擎初始化
+      console.log('Game initialized');
     },
 
     // 选择棋子
@@ -106,25 +87,18 @@ export const useChessStore = defineStore('chess', {
       this.selectedPos = null;
       this.validMoves = [];
       
-      // 通知引擎
-      const fen = boardToFen(this.board);
-      const turn = this.currentTurn === 'red' ? 'w' : 'b';
-      sendCommand(`position fen ${fen} ${turn}`);
-      
-      // 开始分析
-      this.startEngineAnalysis();
+      // 简化版：不调用引擎分析
+      this.engineThinking = false;
     },
 
-    // 开始引擎分析
+    // 开始引擎分析（简化版：不做任何事）
     startEngineAnalysis() {
-      this.engineThinking = true;
-      startAnalysis(20);
+      this.engineThinking = false;
     },
 
     // 停止引擎分析
     stopEngineAnalysis() {
       this.engineThinking = false;
-      stopAnalysis();
     },
 
     // 悔棋
@@ -143,11 +117,6 @@ export const useChessStore = defineStore('chess', {
       this.winner = null;
       this.selectedPos = null;
       this.validMoves = [];
-      
-      // 更新引擎
-      const fen = boardToFen(this.board);
-      const turn = this.currentTurn === 'red' ? 'w' : 'b';
-      sendCommand(`position fen ${fen} ${turn}`);
     },
 
     // 重新开始
@@ -161,9 +130,6 @@ export const useChessStore = defineStore('chess', {
       this.engineInfo = null;
       this.gameOver = false;
       this.winner = null;
-      
-      sendCommand('ucinewgame');
-      sendCommand('position fen rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w');
     },
 
     // 翻转棋盘
