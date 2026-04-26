@@ -1,74 +1,75 @@
 <template>
-  <div class="chess-board">
-    <!-- 棋盘 -->
-    <div class="board-container">
-      <div class="board">
-        <div 
-          v-for="(row, rowIndex) in store.board" 
-          :key="rowIndex"
-          class="board-row"
-        >
-          <div
-            v-for="(piece, colIndex) in row"
-            :key="colIndex"
-            class="cell"
-            :class="{
-              'selected': isSelected(rowIndex, colIndex),
-              'valid-move': isValidMove(rowIndex, colIndex),
-              'red-piece': getPieceColor(piece) === 'red',
-              'black-piece': getPieceColor(piece) === 'black'
-            }"
-            @click="handleCellClick(rowIndex, colIndex)"
+  <div class="chess-app">
+    <!-- 标题 -->
+    <header class="app-header">
+      <h1>🎮 皮卡鱼中国象棋</h1>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 棋盘 -->
+      <div class="board-container">
+        <div class="board">
+          <div 
+            v-for="(row, rowIndex) in store.board" 
+            :key="rowIndex"
+            class="board-row"
           >
-            <span v-if="piece !== ' '" class="piece">
-              {{ getPieceName(piece) }}
-            </span>
+            <div
+              v-for="(piece, colIndex) in row"
+              :key="colIndex"
+              class="cell"
+              :class="{
+                'selected': isSelected(rowIndex, colIndex),
+                'valid-move': isValidMove(rowIndex, colIndex),
+                'red-piece': getPieceColor(piece) === 'red',
+                'black-piece': getPieceColor(piece) === 'black'
+              }"
+              @click="handleCellClick(rowIndex, colIndex)"
+            >
+              <span v-if="piece !== ' '" class="piece">
+                {{ getPieceName(piece) }}
+              </span>
+            </div>
           </div>
         </div>
+        <div class="river">楚河&nbsp;&nbsp;&nbsp;&nbsp;汉界</div>
       </div>
-      
-      <!-- 楚河汉界 -->
-      <div class="river">楚河&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;汉界</div>
-    </div>
 
-    <!-- 信息面板 -->
-    <div class="info-panel">
-      <div class="turn-indicator">
-        当前回合: {{ store.currentTurn === 'red' ? '红方' : '黑方' }}
-      </div>
-      
-      <!-- 引擎信息 -->
-      <div v-if="store.engineInfo" class="engine-info">
-        <div>深度: {{ store.engineInfo.depth }}</div>
-        <div v-if="store.engineInfo.score">
-          分数: {{ store.engineInfo.score > 0 ? '+' : '' }}{{ store.engineInfo.score / 100 }}
+      <!-- 信息面板 -->
+      <div class="info-panel">
+        <div class="turn-indicator">
+          {{ store.currentTurn === 'red' ? '🔴 红方' : '⚫ 黑方' }}走棋
         </div>
-        <div v-if="store.engineInfo.mate">
-          杀棋: {{ store.engineInfo.mate }} 步
+        
+        <div v-if="store.engineInfo" class="engine-info">
+          <div>深度: {{ store.engineInfo.depth }}</div>
+          <div v-if="store.engineInfo.score">
+            分数: {{ store.engineInfo.score > 0 ? '+' : '' }}{{ (store.engineInfo.score / 100).toFixed(2) }}
+          </div>
+          <div v-if="store.engineInfo.mate">
+            杀棋: {{ store.engineInfo.mate }} 步
+          </div>
         </div>
-        <div v-if="store.engineInfo.pv" class="pv">
-          最佳走法: {{ store.engineInfo.pv.slice(0, 3).join(' ') }}
+        
+        <div v-if="store.engineThinking" class="thinking">
+          ⏳ 分析中...
+        </div>
+        
+        <div v-if="store.gameOver" class="game-over">
+          🎉 {{ store.winner === 'red' ? '红方' : '黑方' }}获胜!
+        </div>
+        
+        <div class="controls">
+          <button @click="store.undoMove()" :disabled="store.history.length === 0">
+            ↩️ 悔棋
+          </button>
+          <button @click="store.resetGame()">
+            🔄 重开
+          </button>
         </div>
       </div>
-      
-      <div v-if="store.engineThinking" class="thinking">
-        引擎分析中...
-      </div>
-      
-      <!-- 游戏结束 -->
-      <div v-if="store.gameOver" class="game-over">
-        游戏结束! {{ store.winner === 'red' ? '红方' : '黑方' }}获胜!
-      </div>
-      
-      <!-- 控制按钮 -->
-      <div class="controls">
-        <button @click="store.undoMove()" :disabled="store.history.length === 0">
-          悔棋
-        </button>
-        <button @click="store.resetGame()">重新开始</button>
-        <button @click="store.flipBoard()">翻转棋盘</button>
-      </div>
-    </div>
+    </main>
   </div>
 </template>
 
@@ -80,7 +81,11 @@ import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic';
 const store = useChessStore();
 
 onMounted(async () => {
-  await store.initGameEngine();
+  try {
+    await store.initGameEngine();
+  } catch (e) {
+    console.log('Engine init skipped');
+  }
 });
 
 function getPieceName(piece: string): string {
@@ -101,35 +106,54 @@ function handleCellClick(row: number, col: number) {
 </script>
 
 <style scoped>
-.chess-board {
+.chess-app {
+  width: 100%;
+  min-height: 100vh;
   display: flex;
-  gap: 20px;
-  padding: 20px;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: column;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.app-header {
+  text-align: center;
+  padding: 15px;
+  color: white;
+}
+
+.app-header h1 {
+  font-size: 24px;
+  margin: 0;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  gap: 15px;
 }
 
 .board-container {
   background: #f0d9b5;
   border: 3px solid #8b4513;
   border-radius: 8px;
-  padding: 10px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
 .board {
   display: flex;
   flex-direction: column;
-  gap: 0;
 }
 
 .board-row {
   display: flex;
-  height: 50px;
 }
 
 .cell {
-  width: 50px;
-  height: 50px;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -137,6 +161,20 @@ function handleCellClick(row: number, col: number) {
   position: relative;
   border: 1px solid #d4a574;
   background: #f0d9b5;
+}
+
+@media (min-width: 400px) {
+  .cell {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+@media (min-width: 500px) {
+  .cell {
+    width: 48px;
+    height: 48px;
+  }
 }
 
 .cell:hover {
@@ -154,16 +192,28 @@ function handleCellClick(row: number, col: number) {
 .cell.valid-move::after {
   content: '';
   position: absolute;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   background: rgba(0, 128, 0, 0.5);
   border-radius: 50%;
 }
 
 .piece {
-  font-size: 32px;
+  font-size: 26px;
   font-weight: bold;
   text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+}
+
+@media (min-width: 400px) {
+  .piece {
+    font-size: 30px;
+  }
+}
+
+@media (min-width: 500px) {
+  .piece {
+    font-size: 34px;
+  }
 }
 
 .red-piece .piece {
@@ -176,79 +226,80 @@ function handleCellClick(row: number, col: number) {
 
 .river {
   text-align: center;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: bold;
   color: #8b4513;
-  padding: 10px;
-  letter-spacing: 20px;
+  padding: 8px;
+  letter-spacing: 15px;
 }
 
 .info-panel {
-  min-width: 250px;
-  padding: 20px;
-  background: #fff;
+  width: 100%;
+  max-width: 400px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 .turn-indicator {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: bold;
-  margin-bottom: 15px;
-  padding: 10px;
+  text-align: center;
+  padding: 12px;
   background: #f5f5f5;
-  border-radius: 4px;
+  border-radius: 8px;
+  margin-bottom: 12px;
 }
 
 .engine-info {
-  margin-bottom: 15px;
   padding: 10px;
   background: #e8f5e9;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 14px;
+  margin-bottom: 12px;
 }
 
 .engine-info div {
-  margin: 5px 0;
-}
-
-.pv {
-  font-family: monospace;
-  word-break: break-all;
+  margin: 4px 0;
 }
 
 .thinking {
+  text-align: center;
   color: #666;
-  font-style: italic;
-  margin-bottom: 15px;
+  padding: 8px;
+  margin-bottom: 12px;
 }
 
 .game-over {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: bold;
   color: #cc0000;
   text-align: center;
   padding: 15px;
   background: #ffebee;
-  border-radius: 4px;
-  margin-bottom: 15px;
+  border-radius: 8px;
+  margin-bottom: 12px;
 }
 
 .controls {
   display: flex;
-  flex-direction: column;
   gap: 10px;
+  justify-content: center;
 }
 
 .controls button {
-  padding: 10px 20px;
+  flex: 1;
+  max-width: 150px;
+  padding: 12px 20px;
   font-size: 16px;
   cursor: pointer;
   background: #4caf50;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   transition: background 0.3s;
+  font-weight: bold;
 }
 
 .controls button:hover {
@@ -256,7 +307,7 @@ function handleCellClick(row: number, col: number) {
 }
 
 .controls button:disabled {
-  background: #ccc;
+  background: #bbb;
   cursor: not-allowed;
 }
 </style>
