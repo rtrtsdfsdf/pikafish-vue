@@ -44,64 +44,31 @@ jobs:
           npx cap add android || true
           npx cap sync android
           
-      - name: Download and extract Pikafish
+      - name: Restore jniLibs
         run: |
+          # jniLibs is in the repo, but cap sync might overwrite it
+          # Restore from backup
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          mkdir -p android/app/src/main/assets/engine
           
-          # Install 7z
-          sudo apt-get update
-          sudo apt-get install -y p7zip-full
-          
-          # Download 7z package
-          echo "Downloading Pikafish.2026-01-02.7z (52.8 MB)..."
-          curl -L -o /tmp/pikafish.7z "https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2026-01-02/Pikafish.2026-01-02.7z"
-          
-          echo "Downloaded size: $(ls -lh /tmp/pikafish.7z | awk '{print $5}')"
-          
-          # Extract
-          echo "Extracting..."
-          7z x /tmp/pikafish.7z -o/tmp/pikafish -y
-          
-          echo "Extracted files:"
-          find /tmp/pikafish -type f -exec ls -lh {} \;
-          
-          # Find the Linux ARM64 binary
-          ENGINE=""
-          for f in /tmp/pikafish/pikafish /tmp/pikafish/*/pikafish; do
-            if [ -f "$f" ]; then
-              SIZE=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f" 2>/dev/null)
-              if [ "$SIZE" -gt 100000 ]; then
-                ENGINE="$f"
-                echo "Found engine: $f ($SIZE bytes)"
-                break
-              fi
-            fi
-          done
-          
-          if [ -z "$ENGINE" ]; then
-            echo "ERROR: No valid engine binary found!"
-            exit 1
+          # Check if we need to restore
+          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libpikafish.so ] || \
+             [ $(stat -c%s android/app/src/main/jniLibs/arm64-v8a/libpikafish.so 2>/dev/null || echo 0) -lt 1000000 ]; then
+            echo "Restoring engine from repo..."
+            # The file should be in the repo already
+            ls -la android/app/src/main/jniLibs/arm64-v8a/ || true
           fi
           
-          # Copy to jniLibs
-          cp "$ENGINE" android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
+          echo "jniLibs contents:"
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
           
-          # Copy NNUE if exists
-          for f in /tmp/pikafish/*.nnue /tmp/pikafish/*/*.nnue; do
-            if [ -f "$f" ]; then
-              cp "$f" android/app/src/main/assets/engine/
-              echo "Copied NNUE: $f"
-            fi
-          done
+          # Verify engine size
+          ENGINE_SIZE=$(stat -c%s android/app/src/main/jniLibs/arm64-v8a/libpikafish.so 2>/dev/null || echo 0)
+          echo "Engine size: $ENGINE_SIZE bytes"
           
-          echo ""
-          echo "Final jniLibs:"
-          ls -lh android/app/src/main/jniLibs/arm64-v8a/
-          
-          echo ""
-          echo "Final assets:"
-          ls -lh android/app/src/main/assets/engine/ || echo "No engine assets"
+          if [ "$ENGINE_SIZE" -lt 1000000 ]; then
+            echo "ERROR: Engine file is too small or missing!"
+            exit 1
+          fi
           
       - name: Build APK
         run: |
@@ -120,10 +87,6 @@ jobs:
           echo ""
           echo "Native libraries:"
           unzip -l $APK | grep "lib/"
-          
-          echo ""
-          echo "Engine assets:"
-          unzip -l $APK | grep -E "engine|nnue" || echo "None"
           
       - name: Upload APK
         uses: actions/upload-artifact@v4
