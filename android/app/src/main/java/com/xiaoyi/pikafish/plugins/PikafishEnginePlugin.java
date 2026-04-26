@@ -70,8 +70,8 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 debug("Work dir: " + engineWorkDir.getAbsolutePath());
                 
-                // 复制 NNUE 模型到工作目录
-                File nnueFile = copyNnueFromAssets();
+                // 复制 NNUE 模型到 filesDir 根目录（引擎默认查找位置）
+                File nnueFile = copyNnueToFilesDir();
                 if (nnueFile != null) {
                     debug("NNUE model ready: " + nnueFile.getAbsolutePath());
                 }
@@ -87,7 +87,17 @@ public class PikafishEnginePlugin extends Plugin {
                 
                 // 启动引擎
                 debug("Starting engine process...");
-                engineProcess = Runtime.getRuntime().exec(new String[]{enginePath}, null, engineWorkDir);
+                
+                // 设置环境变量，让引擎知道 NNUE 文件位置
+                String[] envp = null;
+                if (nnueFile != null) {
+                    envp = new String[] {
+                        "PIKAFISH_NNUE_PATH=" + nnueFile.getAbsolutePath()
+                    };
+                    debug("Setting NNUE env: " + nnueFile.getAbsolutePath());
+                }
+                
+                engineProcess = Runtime.getRuntime().exec(new String[]{enginePath}, envp, engineWorkDir);
                 
                 engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream()));
                 engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream()));
@@ -147,12 +157,12 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
-     * 从 assets 复制 NNUE 模型
+     * 复制 NNUE 模型到 filesDir 根目录
      */
-    private File copyNnueFromAssets() {
+    private File copyNnueToFilesDir() {
         try {
             String nnueName = "pikafish.nnue";
-            File targetFile = new File(engineWorkDir, nnueName);
+            File targetFile = new File(getContext().getFilesDir(), nnueName);
             
             debug("NNUE target path: " + targetFile.getAbsolutePath());
             
