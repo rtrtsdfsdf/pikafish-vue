@@ -97,12 +97,14 @@ public class PikafishEnginePlugin extends Plugin {
                 debug("Starting engine process...");
                 
                 // 设置环境变量，让引擎知道 NNUE 文件位置
-                String[] envp = null;
+                // 设置环境变量
+                String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
+                String[] envp = new String[] {
+                    "PIKAFISH_LIB_DIR=" + nativeLibDir
+                };
+                debug("Setting PIKAFISH_LIB_DIR: " + nativeLibDir);
                 if (nnueFile != null) {
-                    envp = new String[] {
-                        "PIKAFISH_NNUE_PATH=" + nnueFile.getAbsolutePath()
-                    };
-                    debug("Setting NNUE env: " + nnueFile.getAbsolutePath());
+                    debug("NNUE file path: " + nnueFile.getAbsolutePath());
                 }
                 
                 debug("Executing: " + enginePath);
