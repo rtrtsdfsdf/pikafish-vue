@@ -1,5 +1,6 @@
 package com.xiaoyi.pikafish.plugins;
 
+import android.content.pm.ApplicationInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -14,12 +15,11 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,6 +38,18 @@ public class PikafishEnginePlugin extends Plugin {
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private final AtomicBoolean isReady = new AtomicBoolean(false);
     
+    // 收集调试信息
+    private final List<String> debugMessages = new ArrayList<>();
+    
+    private void debug(String msg) {
+        Log.d(TAG, msg);
+        debugMessages.add(msg);
+        // 发送调试消息到前端
+        JSObject data = new JSObject();
+        data.put("message", "[DEBUG] " + msg);
+        notifyListeners("engineMessage", data);
+    }
+    
     @Override
     public void load() {
         executor = Executors.newSingleThreadExecutor();
@@ -55,33 +67,33 @@ public class PikafishEnginePlugin extends Plugin {
         
         executor.execute(() -> {
             try {
+                debug("=== Starting engine initialization ===");
+                
                 // 创建引擎工作目录
                 engineWorkDir = new File(getContext().getFilesDir(), "engine");
                 if (!engineWorkDir.exists()) {
                     engineWorkDir.mkdirs();
                 }
+                debug("Work dir: " + engineWorkDir.getAbsolutePath());
                 
                 // 获取引擎文件路径
-                String enginePath = getEnginePath();
+                String enginePath = findEngine();
                 
                 if (enginePath == null) {
-                    throw new RuntimeException("Engine library not found");
+                    throw new RuntimeException("Engine library not found. See debug logs for details.");
                 }
                 
-                Log.d(TAG, "Engine path: " + enginePath);
-                Log.d(TAG, "Work dir: " + engineWorkDir.getAbsolutePath());
+                debug("Using engine: " + enginePath);
                 
-                // 使用 Runtime.exec() 而不是 ProcessBuilder
-                // 这在某些 Android 版本上更可靠
-                String[] envp = new String[0];
-                String[] cmd = new String[]{enginePath};
-                
-                engineProcess = Runtime.getRuntime().exec(cmd, envp, engineWorkDir);
+                // 启动引擎
+                debug("Starting process...");
+                engineProcess = Runtime.getRuntime().exec(new String[]{enginePath}, null, engineWorkDir);
                 
                 engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream()));
                 engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream()));
                 
                 isRunning.set(true);
+                debug("Process started, waiting for output...");
                 
                 // 启动输出监听线程
                 startOutputListener();
@@ -98,7 +110,7 @@ public class PikafishEnginePlugin extends Plugin {
                 });
                 
             } catch (Exception e) {
-                Log.e(TAG, "Failed to initialize engine", e);
+                debug("ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 isRunning.set(false);
                 Handler mainHandler = new Handler(Looper.getMainLooper());
                 mainHandler.post(() -> {
@@ -112,50 +124,56 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
-     * 获取引擎可执行文件路径
-     * Android 10+ 不允许执行 filesDir 中的文件，必须使用 nativeLibraryDir
+     * 查找引擎文件
      */
-    private String getEnginePath() {
-        // 方法1：直接使用 nativeLibraryDir（推荐）
-        String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
-        File nativeEngine = new File(nativeLibDir, "libpikafish.so");
+    private String findEngine() {
+        debug("--- Searching for engine ---");
         
-        Log.d(TAG, "Method 1 - nativeLibraryDir: " + nativeLibDir);
-        Log.d(TAG, "Native engine exists: " + nativeEngine.exists());
-        Log.d(TAG, "Native engine canExecute: " + nativeEngine.canExecute());
+        ApplicationInfo appInfo = getContext().getApplicationInfo();
+        String nativeLibDir = appInfo.nativeLibraryDir;
         
-        if (nativeEngine.exists() && nativeEngine.canExecute()) {
-            return nativeEngine.getAbsolutePath();
-        }
+        debug("Application info:");
+        debug("  sourceDir: " + appInfo.sourceDir);
+        debug("  nativeLibraryDir: " + nativeLibDir);
+        debug("  device ABI: " + Build.SUPPORTED_ABIS[0]);
         
-        // 方法2：尝试列出 nativeLibraryDir 目录内容
+        // 方法1：直接检查 nativeLibraryDir
         File libDir = new File(nativeLibDir);
+        debug("Method 1: Check nativeLibraryDir");
+        debug("  Path: " + nativeLibDir);
+        debug("  Exists: " + libDir.exists());
+        debug("  IsDirectory: " + libDir.isDirectory());
+        
         if (libDir.exists() && libDir.isDirectory()) {
-            Log.d(TAG, "Listing " + nativeLibDir + ":");
             File[] files = libDir.listFiles();
+            debug("  Files count: " + (files != null ? files.length : "null"));
             if (files != null) {
                 for (File f : files) {
-                    Log.d(TAG, "  " + f.getName() + " - canExecute: " + f.canExecute());
-                    if (f.getName().contains("pikafish")) {
+                    debug("    " + f.getName() + " - size:" + f.length() + " exec:" + f.canExecute() + " read:" + f.canRead());
+                    if (f.getName().contains("pikafish") && f.canExecute()) {
+                        debug("  FOUND: " + f.getAbsolutePath());
                         return f.getAbsolutePath();
                     }
                 }
             }
         }
         
-        // 方法3：检查父目录
+        // 方法2：检查父目录的其他子目录
         File parentDir = libDir.getParentFile();
+        debug("Method 2: Check parent directory");
+        debug("  Parent: " + (parentDir != null ? parentDir.getAbsolutePath() : "null"));
+        
         if (parentDir != null && parentDir.exists()) {
-            Log.d(TAG, "Checking parent dir: " + parentDir.getAbsolutePath());
             File[] subdirs = parentDir.listFiles();
+            debug("  Subdirs count: " + (subdirs != null ? subdirs.length : "null"));
             if (subdirs != null) {
                 for (File subdir : subdirs) {
-                    Log.d(TAG, "  Subdir: " + subdir.getName());
+                    debug("    Subdir: " + subdir.getName());
                     File engine = new File(subdir, "libpikafish.so");
                     if (engine.exists()) {
-                        Log.d(TAG, "  Found engine at: " + engine.getAbsolutePath());
-                        Log.d(TAG, "  Can execute: " + engine.canExecute());
+                        debug("      Found libpikafish.so - size:" + engine.length() + " exec:" + engine.canExecute());
                         if (engine.canExecute()) {
+                            debug("  FOUND: " + engine.getAbsolutePath());
                             return engine.getAbsolutePath();
                         }
                     }
@@ -163,17 +181,49 @@ public class PikafishEnginePlugin extends Plugin {
             }
         }
         
-        // 方法4：使用 linker 执行（Android 特殊方式）
-        File linker = new File("/system/bin/linker64");
-        if (!linker.exists()) {
-            linker = new File("/system/bin/linker");
+        // 方法3：检查 APK 中的 lib 目录
+        debug("Method 3: Check APK structure");
+        String apkPath = appInfo.sourceDir;
+        debug("  APK: " + apkPath);
+        
+        // 列出 APK 中的 lib 目录
+        try {
+            Process process = Runtime.getRuntime().exec(new String[]{"unzip", "-l", apkPath});
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            int count = 0;
+            while ((line = reader.readLine()) != null && count < 50) {
+                if (line.contains("lib/") && line.contains(".so")) {
+                    debug("  APK content: " + line.trim());
+                    count++;
+                }
+            }
+            process.waitFor();
+        } catch (Exception e) {
+            debug("  Failed to list APK: " + e.getMessage());
         }
         
-        if (linker.exists() && nativeEngine.exists()) {
-            Log.d(TAG, "Trying linker method with: " + linker.getAbsolutePath());
-            return linker.getAbsolutePath() + " " + nativeEngine.getAbsolutePath();
+        // 方法4：尝试使用 app_lib 目录（某些设备的特殊路径）
+        String appLibPath = "/data/app-lib/" + getContext().getPackageName();
+        File appLibDir = new File(appLibPath);
+        debug("Method 4: Check app_lib");
+        debug("  Path: " + appLibPath);
+        debug("  Exists: " + appLibDir.exists());
+        
+        if (appLibDir.exists()) {
+            File[] files = appLibDir.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    debug("    " + f.getName());
+                    if (f.getName().contains("pikafish") && f.canExecute()) {
+                        debug("  FOUND: " + f.getAbsolutePath());
+                        return f.getAbsolutePath();
+                    }
+                }
+            }
         }
         
+        debug("--- Engine NOT FOUND ---");
         return null;
     }
     
@@ -192,7 +242,7 @@ public class PikafishEnginePlugin extends Plugin {
         
         executor.execute(() -> {
             try {
-                Log.d(TAG, ">>> " + command);
+                debug(">>> " + command);
                 engineWriter.write(command + "\n");
                 engineWriter.flush();
                 
@@ -203,7 +253,7 @@ public class PikafishEnginePlugin extends Plugin {
                     call.resolve(result);
                 });
             } catch (IOException e) {
-                Log.e(TAG, "Failed to send command", e);
+                debug("Send error: " + e.getMessage());
                 Handler mainHandler = new Handler(Looper.getMainLooper());
                 mainHandler.post(() -> {
                     JSObject result = new JSObject();
@@ -237,7 +287,7 @@ public class PikafishEnginePlugin extends Plugin {
                     engineProcess.waitFor();
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error quitting engine", e);
+                debug("Quit error: " + e.getMessage());
             } finally {
                 cleanup();
                 Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -253,7 +303,7 @@ public class PikafishEnginePlugin extends Plugin {
                 while (isRunning.get() && engineProcess != null && engineProcess.isAlive()) {
                     line = engineReader.readLine();
                     if (line != null) {
-                        Log.d(TAG, "<<< " + line);
+                        debug("<<< " + line);
                         
                         if (line.contains("readyok")) {
                             isReady.set(true);
@@ -266,7 +316,7 @@ public class PikafishEnginePlugin extends Plugin {
                 }
             } catch (IOException e) {
                 if (isRunning.get()) {
-                    Log.e(TAG, "Error reading engine output", e);
+                    debug("Read error: " + e.getMessage());
                 }
             }
         });
@@ -291,7 +341,7 @@ public class PikafishEnginePlugin extends Plugin {
                 engineProcess = null;
             }
         } catch (IOException e) {
-            Log.e(TAG, "Error cleaning up", e);
+            debug("Cleanup error: " + e.getMessage());
         }
     }
     
