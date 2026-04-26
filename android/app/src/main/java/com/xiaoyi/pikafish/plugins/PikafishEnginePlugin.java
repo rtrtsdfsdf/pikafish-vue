@@ -98,18 +98,18 @@ public class PikafishEnginePlugin extends Plugin {
                 startOutputListener();
                 Thread.sleep(500);
                 
-                // 加载 NNUE 模型
-                if (nnueFile != null) {
-                    debug("Loading NNUE model...");
-                    engineWriter.write("setoption name EvalFile value " + nnueFile.getName() + "\n");
-                    engineWriter.flush();
-                    Thread.sleep(200);
-                }
-                
-                // 初始化 UCI
+                // 初始化 UCI（必须先发送 uci）
                 engineWriter.write("uci\n");
                 engineWriter.flush();
-                Thread.sleep(500);
+                Thread.sleep(1000);  // 等待 uciok
+                
+                // 加载 NNUE 模型（在 uci 之后）
+                if (nnueFile != null) {
+                    debug("Loading NNUE model: " + nnueFile.getAbsolutePath());
+                    engineWriter.write("setoption name EvalFile value " + nnueFile.getName() + "\n");
+                    engineWriter.flush();
+                    Thread.sleep(500);
+                }
                 
                 engineWriter.write("isready\n");
                 engineWriter.flush();
@@ -144,11 +144,17 @@ public class PikafishEnginePlugin extends Plugin {
             String nnueName = "pikafish.nnue";
             File targetFile = new File(engineWorkDir, nnueName);
             
+            debug("NNUE target path: " + targetFile.getAbsolutePath());
+            
             // 缓存检查
             if (targetFile.exists() && targetFile.length() > 40000000) {
                 debug("Using cached NNUE: " + targetFile.length() + " bytes");
                 return targetFile;
             }
+            
+            // 检查 assets 中是否存在
+            String[] assets = getContext().getAssets().list("engine");
+            debug("Assets in engine/: " + (assets != null ? java.util.Arrays.toString(assets) : "null"));
             
             // 从 assets 复制
             InputStream is = getContext().getAssets().open("engine/" + nnueName);
@@ -165,11 +171,11 @@ public class PikafishEnginePlugin extends Plugin {
             fos.close();
             is.close();
             
-            debug("Copied NNUE: " + total + " bytes");
+            debug("Copied NNUE: " + total + " bytes to " + targetFile.getAbsolutePath());
             return targetFile;
             
         } catch (IOException e) {
-            debug("NNUE not available: " + e.getMessage());
+            debug("NNUE copy FAILED: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             return null;
         }
     }
