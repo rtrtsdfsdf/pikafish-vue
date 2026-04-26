@@ -220,6 +220,12 @@ async function copyLogs() {
     .map(log => `[${log.time}] [${log.level.toUpperCase()}] ${log.message}`)
     .join('\n');
   
+  // 先在控制台输出完整日志
+  console.log('=== FULL LOGS START ===');
+  console.log(logText);
+  console.log('=== FULL LOGS END ===');
+  
+  // 尝试复制到剪贴板
   try {
     if (Capacitor.isNativePlatform()) {
       await Clipboard.write({ string: logText });

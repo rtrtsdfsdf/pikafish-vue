@@ -157,20 +157,22 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
-     * 复制 NNUE 模型到 filesDir 根目录
+     * 复制 NNUE 模型到引擎所在目录
      */
     private File copyNnueToFilesDir() {
         try {
             String nnueName = "pikafish.nnue";
-            File targetFile = new File(getContext().getFilesDir(), nnueName);
+            
+            // 获取引擎所在目录（nativeLibraryDir）
+            String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
+            File targetFile = new File(nativeLibDir, nnueName);
             
             debug("NNUE target path: " + targetFile.getAbsolutePath());
+            debug("Native lib dir: " + nativeLibDir);
             
             // 缓存检查
             if (targetFile.exists() && targetFile.length() > 40000000) {
                 debug("Using cached NNUE: " + targetFile.length() + " bytes");
-                debug("File readable: " + targetFile.canRead());
-                debug("File exists: " + targetFile.exists());
                 return targetFile;
             }
             
