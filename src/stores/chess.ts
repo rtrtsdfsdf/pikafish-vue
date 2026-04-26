@@ -15,6 +15,7 @@ import {
   quitEngine,
   isNativePlatform,
   isEngineReady,
+  whenReady,
   type EngineMessage 
 } from '@/utils/engine';
 
@@ -130,6 +131,8 @@ export const useChessStore = defineStore('chess', {
         console.log('[Store] UCI OK received');
       } else if (msg.type === 'readyok') {
         console.log('[Store] Engine ready');
+        // 引擎就绪后检查是否需要自动走棋
+        this.checkAutoPlay();
       }
     },
 

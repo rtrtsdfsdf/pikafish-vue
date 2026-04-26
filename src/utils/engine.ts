@@ -17,6 +17,7 @@ let isReady = false;
 let messageCallback: MessageCallback | null = null;
 let listenerHandle: PluginListenerHandle | null = null;
 let pendingReadyResolve: (() => void) | null = null;
+let onReadyCallbacks: Array<() => void> = [];  // 新增：等待就绪的回调
 
 /**
  * 初始化引擎
@@ -33,10 +34,20 @@ export async function initEngine(onMessage: MessageCallback): Promise<boolean> {
     listenerHandle = await PikafishEngine.addListener('engineMessage', (data: { message: string }) => {
       const msg = parseEngineMessage(data.message);
       
-      // 处理特殊消息
-      if (msg.type === 'readyok' && pendingReadyResolve) {
-        pendingReadyResolve();
-        pendingReadyResolve = null;
+      // 处理 readyok
+      if (msg.type === 'readyok') {
+        isReady = true;
+        console.log('[Engine] Engine is ready!');
+        
+        // 执行等待中的回调
+        if (pendingReadyResolve) {
+          pendingReadyResolve();
+          pendingReadyResolve = null;
+        }
+        
+        // 执行所有等待就绪的回调
+        onReadyCallbacks.forEach(cb => cb());
+        onReadyCallbacks = [];
       }
       
       if (messageCallback) {
@@ -55,7 +66,7 @@ export async function initEngine(onMessage: MessageCallback): Promise<boolean> {
     isInitialized = true;
     console.log('[Engine] Initialized successfully');
     
-    // 发送 UCI 命令并等待就绪
+    // 发送 UCI 命令
     await sendCommand('uci');
     
     // 等待 isready 返回 readyok
@@ -73,6 +84,11 @@ export async function initEngine(onMessage: MessageCallback): Promise<boolean> {
  */
 async function waitForReady(): Promise<void> {
   return new Promise((resolve) => {
+    if (isReady) {
+      resolve();
+      return;
+    }
+    
     pendingReadyResolve = resolve;
     sendCommand('isready');
     
@@ -80,11 +96,23 @@ async function waitForReady(): Promise<void> {
     setTimeout(() => {
       if (pendingReadyResolve) {
         console.warn('[Engine] Ready timeout, continuing anyway');
+        isReady = true;  // 假设就绪
         pendingReadyResolve = null;
         resolve();
       }
     }, 5000);
   });
+}
+
+/**
+ * 当引擎就绪时执行回调
+ */
+export function whenReady(callback: () => void): void {
+  if (isReady) {
+    callback();
+  } else {
+    onReadyCallbacks.push(callback);
+  }
 }
 
 /**
