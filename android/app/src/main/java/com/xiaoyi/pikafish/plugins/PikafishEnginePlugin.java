@@ -77,13 +77,13 @@ public class PikafishEnginePlugin extends Plugin {
                     debug("NNUE model ready: " + nnueFile.getAbsolutePath());
                 }
                 
-                // 复制引擎到工作目录（因为 nativeLibraryDir 中的文件无法直接执行）
-                File engineFile = copyEngineToFilesDir();
-                if (engineFile == null) {
-                    throw new RuntimeException("Failed to copy engine");
+                // 从 nativeLibraryDir 查找引擎（有正确的 SELinux 上下文）
+                String enginePath = findEngine();
+                
+                if (enginePath == null) {
+                    throw new RuntimeException("Engine not found in nativeLibraryDir");
                 }
                 
-                String enginePath = engineFile.getAbsolutePath();
                 debug("Using engine: " + enginePath);
                 
                 // 启动引擎
@@ -98,19 +98,17 @@ public class PikafishEnginePlugin extends Plugin {
                     debug("Setting NNUE env: " + nnueFile.getAbsolutePath());
                 }
                 
-                // Android 10+ SELinux 限制：filesDir 中的文件不能直接执行
-                // 尝试使用 sh 来执行
-                String[] cmd;
-                if (android.os.Build.VERSION.SDK_INT >= 29) {  // Android 10+
-                    // 使用 sh -c 执行
-                    cmd = new String[]{"/system/bin/sh", "-c", enginePath};
-                    debug("Using sh for Android 10+");
-                } else {
-                    cmd = new String[]{enginePath};
+                // 设置环境变量，让引擎知道 NNUE 文件位置
+                String[] envp = null;
+                if (nnueFile != null) {
+                    envp = new String[] {
+                        "PIKAFISH_NNUE_PATH=" + nnueFile.getAbsolutePath()
+                    };
+                    debug("Setting NNUE env: " + nnueFile.getAbsolutePath());
                 }
                 
-                debug("Command: " + String.join(" ", cmd));
-                engineProcess = Runtime.getRuntime().exec(cmd, envp, engineWorkDir);
+                debug("Executing: " + enginePath);
+                engineProcess = Runtime.getRuntime().exec(new String[]{enginePath}, envp, engineWorkDir);
                 
                 engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream()));
                 engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream()));
