@@ -44,55 +44,32 @@ jobs:
           npx cap add android || true
           npx cap sync android
           
-      - name: Download and extract Pikafish engine
+      - name: Download Pikafish engine
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           mkdir -p android/app/src/main/assets/engine
           
-          # Download Pikafish release (52.8 MB, contains engine + NNUE)
-          echo "Downloading Pikafish (52.8 MB)..."
-          curl -L -o pikafish.7z "https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2026-01-02/Pikafish.2026-01-02.7z"
+          # Download from previous working release
+          echo "Downloading engine binary..."
+          curl -L -o /tmp/pikafish "https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2026-01-02/pikafish-bmi2-linux"
           
-          # Install 7z
-          sudo apt-get update
-          sudo apt-get install -y p7zip-full
-          
-          # Extract
-          echo "Extracting..."
-          7z x pikafish.7z -o./pikafish_extracted -y
-          
-          echo "Extracted contents:"
-          find ./pikafish_extracted -type f -exec ls -lh {} \;
-          
-          # Copy engine binary (ARM64)
-          if [ -f "./pikafish_extracted/pikafish" ]; then
-            cp ./pikafish_extracted/pikafish android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
-            echo "Copied engine binary"
-          elif [ -f "./pikafish_extracted/Linux/pikafish" ]; then
-            cp ./pikafish_extracted/Linux/pikafish android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
-            echo "Copied engine binary from Linux/"
-          else
-            echo "ERROR: Engine binary not found!"
-            find ./pikafish_extracted -name "pikafish" -type f
-            exit 1
+          # If that fails, try alternative
+          if [ ! -f /tmp/pikafish ] || [ ! -s /tmp/pikafish ]; then
+            echo "Trying alternative download..."
+            # Use the 7z package
+            sudo apt-get update && sudo apt-get install -y p7zip-full
+            curl -L -o /tmp/pikafish.7z "https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2026-01-02/Pikafish.2026-01-02.7z"
+            7z x /tmp/pikafish.7z -o/tmp/pikafish_extracted -y
+            find /tmp/pikafish_extracted -name "pikafish" -type f -exec cp {} /tmp/pikafish \;
           fi
           
-          # Copy NNUE model to assets
-          if [ -f "./pikafish_extracted/pikafish.nnue" ]; then
-            cp ./pikafish_extracted/pikafish.nnue android/app/src/main/assets/engine/
-            echo "Copied NNUE model"
-          else
-            echo "WARNING: NNUE model not found, searching..."
-            find ./pikafish_extracted -name "*.nnue" -type f
-          fi
+          ls -la /tmp/pikafish || echo "Engine not found!"
           
-          echo ""
-          echo "Final jniLibs contents:"
-          ls -lh android/app/src/main/jniLibs/arm64-v8a/
+          # Copy to jniLibs
+          cp /tmp/pikafish android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
           
-          echo ""
-          echo "Final assets contents:"
-          ls -lh android/app/src/main/assets/engine/ || echo "No engine assets"
+          echo "jniLibs contents:"
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
           
       - name: Build APK
         run: |
@@ -103,14 +80,7 @@ jobs:
       - name: Verify APK contents
         run: |
           echo "=== Checking APK contents ==="
-          echo ""
-          echo "Native libraries:"
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep "lib/" || echo "No lib files!"
-          echo ""
-          echo "Engine assets:"
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "engine|nnue" || echo "No engine assets!"
-          echo ""
-          echo "APK size:"
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/|\.so" || echo "No .so files!"
           ls -lh android/app/build/outputs/apk/debug/app-debug.apk
           
       - name: Upload APK
