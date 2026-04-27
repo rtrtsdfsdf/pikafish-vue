@@ -53,7 +53,7 @@
           v-for="(move, index) in moveHistory" 
           :key="index"
           class="move-item"
-          :class="{ current: index === currentMoveIndex }"
+          :class="{ current: index === currentMoveIndex }""
         >
           <span class="move-num">{{ Math.floor(index / 2) + 1 }}.</span>
           <span class="move-text">{{ move }}</span>
@@ -102,12 +102,6 @@
         </svg>
         <span>重开</span>
       </button>
-      <button class="action-btn" :class="{ active: autoPlayMode !== 'none' }" @click="$emit('toggleAutoPlay')">
-        <svg viewBox="0 0 24 24" width="18" height="18">
-          <path fill="currentColor" d="M8 5v14l11-7z"/>
-        </svg>
-        <span>{{ autoPlayLabel }}</span>
-      </button>
     </div>
   </div>
 </template>
@@ -126,13 +120,11 @@ const props = defineProps<{
   moveHistory: string[]
   currentMoveIndex: number
   canUndo: boolean
-  autoPlayMode: string
 }>()
 
 defineEmits<{
   undo: []
   reset: []
-  toggleAutoPlay: []
   goStart: []
   goPrev: []
   goNext: []
@@ -171,15 +163,6 @@ const scoreClass = computed(() => {
 const bestMove = computed(() => {
   if (!props.engineInfo?.pv?.length) return '-'
   return props.engineInfo.pv.slice(0, 4).join(' ')
-})
-
-const autoPlayLabel = computed(() => {
-  switch (props.autoPlayMode) {
-    case 'red': return '红方AI'
-    case 'black': return '黑方AI'
-    case 'both': return '双AI'
-    default: return 'AI'
-  }
 })
 </script>
 
@@ -364,7 +347,8 @@ const autoPlayLabel = computed(() => {
 
 .quick-actions {
   display: flex;
-  justify-content: space-around;
+  justify-content: center;
+  gap: 24px;
   padding: 8px;
   background: rgba(0, 0, 0, 0.3);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -392,9 +376,5 @@ const autoPlayLabel = computed(() => {
 .action-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
-}
-
-.action-btn.active {
-  color: #4CAF50;
 }
 </style>

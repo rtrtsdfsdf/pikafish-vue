@@ -2,11 +2,13 @@
   <div id="app">
     <!-- 顶部工具栏 -->
     <ToolBar 
-      :mode="gameMode"
+      :red-a-i="redAI"
+      :black-a-i="blackAI"
       @menu="showMenu = true"
-      @newGame="handleNewGame"
-      @toggleMode="toggleGameMode"
-      @flipBoard="flipBoard"
+      @new-game="handleNewGame"
+      @toggle-red-a-i="toggleRedAI"
+      @toggle-black-a-i="toggleBlackAI"
+      @flip-board="flipBoard"
       @settings="showSettings = true"
     />
     
@@ -28,10 +30,8 @@
       :move-history="moveHistory"
       :current-move-index="currentMoveIndex"
       :can-undo="canUndo"
-      :auto-play-mode="autoPlayMode"
       @undo="handleUndo"
       @reset="handleReset"
-      @toggle-auto-play="toggleAutoPlay"
       @go-start="goToStart"
       @go-prev="goToPrev"
       @go-next="goToNext"
@@ -42,7 +42,7 @@
     <div v-if="showMenu" class="modal-overlay" @click="showMenu = false">
       <div class="modal-content" @click.stop>
         <h3>菜单</h3>
-        <button @click="handleNewGame; showMenu = false">新对局</button>
+        <button @click="handleNewGame(); showMenu = false">新对局</button>
         <button @click="showMenu = false">关闭</button>
       </div>
     </div>
@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import ToolBar from './components/ToolBar.vue'
 import BottomPanel from './components/BottomPanel.vue'
 import ChessBoard from './components/ChessBoard.vue'
@@ -75,9 +75,12 @@ const store = useChessStore()
 const chessBoardRef = ref<InstanceType<typeof ChessBoard> | null>(null)
 const showMenu = ref(false)
 const showSettings = ref(false)
-const gameMode = ref<'play' | 'analysis'>('play')
 const isFlipped = ref(false)
 const engineDepth = ref(20)
+
+// AI 状态
+const redAI = ref(false)
+const blackAI = ref(false)
 
 // Computed
 const engineInfo = computed(() => store.engineInfo)
@@ -85,15 +88,13 @@ const isThinking = computed(() => store.engineThinking)
 const moveHistory = computed(() => store.history.map(h => h.notation || ''))
 const currentMoveIndex = computed(() => store.currentMoveIndex)
 const canUndo = computed(() => store.history.length > 0)
-const autoPlayMode = computed(() => store.autoPlayMode)
+
+// 当前回合
+const currentTurn = computed(() => store.currentTurn)
 
 // Methods
 function handleNewGame() {
   store.resetGame()
-}
-
-function toggleGameMode() {
-  gameMode.value = gameMode.value === 'play' ? 'analysis' : 'play'
 }
 
 function flipBoard() {
@@ -106,13 +107,6 @@ function handleUndo() {
 
 function handleReset() {
   store.resetGame()
-}
-
-function toggleAutoPlay() {
-  const modes = ['none', 'red', 'black', 'both'] as const
-  const currentIndex = modes.indexOf(store.autoPlayMode as any)
-  const nextIndex = (currentIndex + 1) % modes.length
-  store.setAutoPlayMode(modes[nextIndex])
 }
 
 function goToStart() {
@@ -134,6 +128,33 @@ function goToEnd() {
 function onMove(move: any) {
   console.log('Move:', move)
 }
+
+// AI 控制
+function toggleRedAI() {
+  redAI.value = !redAI.value
+  console.log('Red AI:', redAI.value)
+}
+
+function toggleBlackAI() {
+  blackAI.value = !blackAI.value
+  console.log('Black AI:', blackAI.value)
+}
+
+// 监听 AI 状态，自动走棋
+watch([redAI, blackAI, currentTurn, isThinking], async ([red, black, turn, thinking]) => {
+  if (thinking) return // 引擎正在思考，等待
+  
+  // 检查是否需要 AI 走棋
+  const needAI = (turn === 'red' && red) || (turn === 'black' && black)
+  
+  if (needAI && !store.gameOver) {
+    console.log('[AI] Auto move for', turn)
+    // 延迟一小段时间再走，让界面有时间更新
+    setTimeout(() => {
+      store.makeAIMove()
+    }, 300)
+  }
+}, { immediate: true })
 
 onMounted(() => {
   console.log('App mounted')
