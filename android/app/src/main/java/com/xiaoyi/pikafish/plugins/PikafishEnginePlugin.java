@@ -99,7 +99,9 @@ public class PikafishEnginePlugin extends Plugin {
                 // 设置环境变量，让引擎知道 NNUE 文件位置
                 // 设置环境变量
                 String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
+                // Set LD_LIBRARY_PATH so the engine can find libc++_shared.so
                 String[] envp = new String[] {
+                    "LD_LIBRARY_PATH=" + nativeLibDir,
                     "PIKAFISH_LIB_DIR=" + nativeLibDir
                 };
                 debug("Setting PIKAFISH_LIB_DIR: " + nativeLibDir);
