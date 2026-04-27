@@ -1,20 +1,143 @@
 <template>
   <div id="app">
-    <header>
-      <h1>🎮 皮卡鱼中国象棋</h1>
-      <p>Pikafish Chinese Chess - Vue + WASM</p>
-    </header>
-    <main>
-      <ChessBoard />
+    <!-- 顶部工具栏 -->
+    <ToolBar 
+      :mode="gameMode"
+      @menu="showMenu = true"
+      @newGame="handleNewGame"
+      @toggleMode="toggleGameMode"
+      @flipBoard="flipBoard"
+      @settings="showSettings = true"
+    />
+    
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 棋盘 -->
+      <div class="board-wrapper" :class="{ flipped: isFlipped }">
+        <ChessBoard 
+          ref="chessBoardRef"
+          @move="onMove"
+        />
+      </div>
     </main>
-    <footer>
-      <p>Powered by Pikafish WASM Engine</p>
-    </footer>
+    
+    <!-- 底部面板 -->
+    <BottomPanel
+      :engine-info="engineInfo"
+      :is-thinking="isThinking"
+      :move-history="moveHistory"
+      :current-move-index="currentMoveIndex"
+      :can-undo="canUndo"
+      :auto-play-mode="autoPlayMode"
+      @undo="handleUndo"
+      @reset="handleReset"
+      @toggle-auto-play="toggleAutoPlay"
+      @go-start="goToStart"
+      @go-prev="goToPrev"
+      @go-next="goToNext"
+      @go-end="goToEnd"
+    />
+    
+    <!-- 菜单弹窗 -->
+    <div v-if="showMenu" class="modal-overlay" @click="showMenu = false">
+      <div class="modal-content" @click.stop>
+        <h3>菜单</h3>
+        <button @click="handleNewGame; showMenu = false">新对局</button>
+        <button @click="showMenu = false">关闭</button>
+      </div>
+    </div>
+    
+    <!-- 设置弹窗 -->
+    <div v-if="showSettings" class="modal-overlay" @click="showSettings = false">
+      <div class="modal-content" @click.stop>
+        <h3>设置</h3>
+        <div class="setting-item">
+          <label>引擎深度:</label>
+          <input type="range" v-model="engineDepth" min="1" max="30" />
+          <span>{{ engineDepth }}</span>
+        </div>
+        <button @click="showSettings = false">关闭</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import ChessBoard from './components/ChessBoard.vue';
+import { ref, computed, onMounted } from 'vue'
+import ToolBar from './components/ToolBar.vue'
+import BottomPanel from './components/BottomPanel.vue'
+import ChessBoard from './components/ChessBoard.vue'
+import { useChessStore } from '@/stores/chess'
+
+const store = useChessStore()
+
+// Refs
+const chessBoardRef = ref<InstanceType<typeof ChessBoard> | null>(null)
+const showMenu = ref(false)
+const showSettings = ref(false)
+const gameMode = ref<'play' | 'analysis'>('play')
+const isFlipped = ref(false)
+const engineDepth = ref(20)
+
+// Computed
+const engineInfo = computed(() => store.engineInfo)
+const isThinking = computed(() => store.engineThinking)
+const moveHistory = computed(() => store.history.map(h => h.notation || ''))
+const currentMoveIndex = computed(() => store.currentMoveIndex)
+const canUndo = computed(() => store.history.length > 0)
+const autoPlayMode = computed(() => store.autoPlayMode)
+
+// Methods
+function handleNewGame() {
+  store.resetGame()
+}
+
+function toggleGameMode() {
+  gameMode.value = gameMode.value === 'play' ? 'analysis' : 'play'
+}
+
+function flipBoard() {
+  isFlipped.value = !isFlipped.value
+}
+
+function handleUndo() {
+  store.undoMove()
+}
+
+function handleReset() {
+  store.resetGame()
+}
+
+function toggleAutoPlay() {
+  const modes = ['none', 'red', 'black', 'both'] as const
+  const currentIndex = modes.indexOf(store.autoPlayMode as any)
+  const nextIndex = (currentIndex + 1) % modes.length
+  store.setAutoPlayMode(modes[nextIndex])
+}
+
+function goToStart() {
+  store.goToStart?.()
+}
+
+function goToPrev() {
+  store.goToPrev?.()
+}
+
+function goToNext() {
+  store.goToNext?.()
+}
+
+function goToEnd() {
+  store.goToEnd?.()
+}
+
+function onMove(move: any) {
+  console.log('Move:', move)
+}
+
+onMounted(() => {
+  console.log('App mounted')
+})
 </script>
 
 <style>
@@ -26,45 +149,104 @@ import ChessBoard from './components/ChessBoard.vue';
 
 body {
   font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #2d1810;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 #app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-header {
-  text-align: center;
-  padding: 20px;
-  color: white;
-}
-
-header h1 {
-  font-size: 32px;
-  margin-bottom: 5px;
-}
-
-header p {
-  font-size: 14px;
-  opacity: 0.8;
-}
-
-main {
+.main-content {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 20px;
+  padding: 10px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #3d2914 0%, #2d1810 100%);
 }
 
-footer {
+.board-wrapper {
+  transition: transform 0.3s ease;
+}
+
+.board-wrapper.flipped {
+  transform: rotate(180deg);
+}
+
+/* 弹窗样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #3d2914;
+  border: 2px solid #8B4513;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 280px;
+  max-width: 90%;
+}
+
+.modal-content h3 {
+  color: #f5deb3;
+  margin-bottom: 16px;
   text-align: center;
-  padding: 15px;
-  color: white;
-  opacity: 0.7;
-  font-size: 12px;
+}
+
+.modal-content button {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 8px;
+  border: none;
+  border-radius: 8px;
+  background: #8B4513;
+  color: #f5deb3;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-content button:hover {
+  background: #a0522d;
+}
+
+.modal-content button:last-child {
+  margin-bottom: 0;
+  background: #5d4037;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: #f5deb3;
+}
+
+.setting-item label {
+  min-width: 80px;
+}
+
+.setting-item input[type="range"] {
+  flex: 1;
+}
+
+.setting-item span {
+  min-width: 30px;
+  text-align: right;
 }
 </style>
