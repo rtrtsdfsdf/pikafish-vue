@@ -3,8 +3,9 @@
     <!-- 棋盘 -->
     <div class="board-frame">
       <div class="board">
+        <!-- 上半部分（黑方，第0-4行） -->
         <div 
-          v-for="(row, rowIndex) in store.board" 
+          v-for="(row, rowIndex) in store.board.slice(0, 5)" 
           :key="rowIndex"
           class="board-row"
         >
@@ -25,8 +26,37 @@
             </span>
           </div>
         </div>
+        
+        <!-- 楚河汉界 -->
+        <div class="river">
+          <span class="river-left">楚 河</span>
+          <span class="river-right">汉 界</span>
+        </div>
+        
+        <!-- 下半部分（红方，第5-9行） -->
+        <div 
+          v-for="(row, rowIndex) in store.board.slice(5)" 
+          :key="rowIndex + 5"
+          class="board-row"
+        >
+          <div
+            v-for="(piece, colIndex) in row"
+            :key="colIndex"
+            class="cell"
+            :class="{
+              'selected': isSelected(rowIndex + 5, colIndex),
+              'valid-move': isValidMove(rowIndex + 5, colIndex),
+              'highlight-from': isHighlightFrom(rowIndex + 5, colIndex),
+              'highlight-to': isHighlightTo(rowIndex + 5, colIndex)
+            }"
+            @click="handleCellClick(rowIndex + 5, colIndex)"
+          >
+            <span v-if="piece !== ' '" class="piece" :class="getPieceColor(piece)">
+              {{ getPieceName(piece) }}
+            </span>
+          </div>
+        </div>
       </div>
-      <div class="river">楚河&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;汉界</div>
     </div>
     
     <!-- 游戏结束提示 -->
@@ -233,16 +263,30 @@ onMounted(async () => {
 
 /* 翻转时棋子保持正向 */
 .river {
-  text-align: center;
-  font-size: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 36px;
+  background: #f5deb3;
+  border-top: 1px solid #8b7355;
+  border-bottom: 1px solid #8b7355;
+  padding: 0 8px;
+}
+
+.river-left, .river-right {
+  font-size: 14px;
   font-weight: bold;
   color: #5d4037;
-  padding: 6px 10px;
-  letter-spacing: 20px;
-  background: linear-gradient(90deg, #e8d4a8 0%, #f5deb3 50%, #e8d4a8 100%);
-  border-top: 2px solid #5d4037;
-  border-bottom: 2px solid #5d4037;
+  letter-spacing: 4px;
   font-family: 'KaiTi', 'STKaiti', serif;
+}
+
+.river-left {
+  /* 楚河在左边 */
+}
+
+.river-right {
+  /* 汉界在右边 */
 }
 
 /* 游戏结束遮罩 */
