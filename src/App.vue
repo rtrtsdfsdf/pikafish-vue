@@ -87,6 +87,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import ToolBar from './components/ToolBar.vue'
 import BottomPanel from './components/BottomPanel.vue'
 import ChessBoard from './components/ChessBoard.vue'
+import PlayerInfo from './components/PlayerInfo.vue'
 import { useChessStore } from '@/stores/chess'
 
 const store = useChessStore()
