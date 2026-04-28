@@ -17,10 +17,16 @@
               'selected': isSelected(rowIndex, colIndex),
               'valid-move': isValidMove(rowIndex, colIndex),
               'highlight-from': isHighlightFrom(rowIndex, colIndex),
-              'highlight-to': isHighlightTo(rowIndex, colIndex)
+              'highlight-to': isHighlightTo(rowIndex, colIndex),
+              'cannon-pos': isCannonPos(rowIndex, colIndex),
+              'pawn-pos': isPawnPos(rowIndex, colIndex)
             }"
             @click="handleCellClick(rowIndex, colIndex)"
           >
+            <!-- 炮位标记 -->
+            <div v-if="isCannonPos(rowIndex, colIndex) && piece === ' '" class="pos-mark cannon-mark"></div>
+            <!-- 兵站标记 -->
+            <div v-if="isPawnPos(rowIndex, colIndex) && piece === ' '" class="pos-mark pawn-mark"></div>
             <span v-if="piece !== ' '" class="piece" :class="getPieceColor(piece)">
               {{ getPieceName(piece) }}
             </span>
@@ -47,10 +53,16 @@
               'selected': isSelected(rowIndex + 5, colIndex),
               'valid-move': isValidMove(rowIndex + 5, colIndex),
               'highlight-from': isHighlightFrom(rowIndex + 5, colIndex),
-              'highlight-to': isHighlightTo(rowIndex + 5, colIndex)
+              'highlight-to': isHighlightTo(rowIndex + 5, colIndex),
+              'cannon-pos': isCannonPos(rowIndex + 5, colIndex),
+              'pawn-pos': isPawnPos(rowIndex + 5, colIndex)
             }"
             @click="handleCellClick(rowIndex + 5, colIndex)"
           >
+            <!-- 炮位标记 -->
+            <div v-if="isCannonPos(rowIndex + 5, colIndex) && piece === ' '" class="pos-mark cannon-mark"></div>
+            <!-- 兵站标记 -->
+            <div v-if="isPawnPos(rowIndex + 5, colIndex) && piece === ' '" class="pos-mark pawn-mark"></div>
             <span v-if="piece !== ' '" class="piece" :class="getPieceColor(piece)">
               {{ getPieceName(piece) }}
             </span>
@@ -108,6 +120,16 @@ function isHighlightFrom(row: number, col: number): boolean {
 
 function isHighlightTo(row: number, col: number): boolean {
   return store.lastMove?.to.row === row && store.lastMove?.to.col === col
+}
+
+// 炮位：(1,2), (7,2) 黑方; (1,7), (7,7) 红方
+function isCannonPos(row: number, col: number): boolean {
+  return (row === 2 && (col === 1 || col === 7)) || (row === 7 && (col === 1 || col === 7))
+}
+
+// 兵站：(0,3), (2,3), (4,3), (6,3), (8,3) 黑方; (0,6), (2,6), (4,6), (6,6), (8,6) 红方
+function isPawnPos(row: number, col: number): boolean {
+  return (row === 3 && col % 2 === 0) || (row === 6 && col % 2 === 0)
 }
 
 function handleCellClick(row: number, col: number) {
@@ -189,6 +211,52 @@ onMounted(async () => {
 
 .cell:hover {
   background: #e8d4a8;
+}
+
+/* 炮位和兵站标记 */
+.pos-mark {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cannon-mark::before,
+.cannon-mark::after,
+.pawn-mark::before,
+.pawn-mark::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-color: #5d4037;
+  border-style: solid;
+}
+
+/* 炮位标记 - L形 */
+.cannon-mark::before {
+  top: 6px;
+  left: 6px;
+  border-width: 1px 0 0 1px;
+}
+
+.cannon-mark::after {
+  top: 6px;
+  right: 6px;
+  border-width: 1px 1px 0 0;
+}
+
+/* 兵站标记 - ⊥形 */
+.pawn-mark::before {
+  bottom: 6px;
+  left: 6px;
+  border-width: 0 0 1px 1px;
+}
+
+.pawn-mark::after {
+  bottom: 6px;
+  right: 6px;
+  border-width: 0 1px 1px 0;
 }
 
 .cell.selected {
