@@ -51,9 +51,17 @@ export const useChessStore = defineStore('chess', {
       this.autoPlayMode = mode;
       console.log('[Store] Auto play mode:', mode);
       
-      // 如果设置了新模式，检查是否需要立即让引擎走棋
-      if (mode !== 'none' && !this.gameOver && isEngineReady()) {
-        this.checkAutoPlay();
+      // 如果设置了新模式，等待引擎就绪后开始
+      if (mode !== 'none' && !this.gameOver) {
+        if (isEngineReady()) {
+          this.checkAutoPlay();
+        } else {
+          // 引擎还没准备好，等待就绪
+          whenReady(() => {
+            console.log('[Store] Engine ready, starting auto play');
+            this.checkAutoPlay();
+          });
+        }
       }
     },
 
