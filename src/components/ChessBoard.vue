@@ -282,14 +282,39 @@ onMounted(async () => {
   background: rgba(144, 238, 144, 0.5) !important;
 }
 
-.cell.hint-from {
-  background: rgba(33, 150, 243, 0.4) !important;
-  box-shadow: inset 0 0 8px rgba(33, 150, 243, 0.6);
+.cell.hint-from::before {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 12px solid #2196F3;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  animation: hint-pulse 1s infinite;
 }
 
-.cell.hint-to {
-  background: rgba(33, 150, 243, 0.6) !important;
-  box-shadow: inset 0 0 12px rgba(33, 150, 243, 0.8);
+.cell.hint-to::before {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 14px solid #1976D2;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  animation: hint-pulse 1s infinite;
+}
+
+@keyframes hint-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .cell.valid-move::after {
