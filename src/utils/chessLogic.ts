@@ -362,18 +362,6 @@ export function boardToFen(
   // 完整 FEN 格式
   return `${fenRows.join('/')} ${turnChar} - - ${halfMoves} ${fullMoves}`;
 }
-
-// 棋子名称映射
-export const PIECE_NAMES: Record<string, string> = {
-  'K': '帅', 'k': '将',
-  'A': '仕', 'a': '士',
-  'B': '相', 'b': '象',
-  'N': '马', 'n': '马',
-  'R': '车', 'r': '车',
-  'C': '炮', 'c': '炮',
-  'P': '兵', 'p': '卒'
-}
-
 // 列号转中文
 const COL_NAMES = ['九', '八', '七', '六', '五', '四', '三', '二', '一']
 
