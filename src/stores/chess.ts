@@ -270,7 +270,8 @@ export const useChessStore = defineStore('chess', {
         from,
         to,
         piece,
-        captured: captured !== ' ' ? captured : undefined
+        captured: captured !== ' ' ? captured : undefined,
+        notation: moveToString(this.board, from, to, piece)
       };
       this.history.push(move);
       

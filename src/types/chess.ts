@@ -17,6 +17,7 @@ export interface Move {
   to: Position;
   piece: string;
   captured?: string;
+  notation?: string;
 }
 
 // 引擎分析结果

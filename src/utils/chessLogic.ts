@@ -363,6 +363,64 @@ export function boardToFen(
   return `${fenRows.join('/')} ${turnChar} - - ${halfMoves} ${fullMoves}`;
 }
 
+// 棋子名称映射
+export const PIECE_NAMES: Record<string, string> = {
+  'K': '帅', 'k': '将',
+  'A': '仕', 'a': '士',
+  'B': '相', 'b': '象',
+  'N': '马', 'n': '马',
+  'R': '车', 'r': '车',
+  'C': '炮', 'c': '炮',
+  'P': '兵', 'p': '卒'
+}
+
+// 列号转中文
+const COL_NAMES = ['九', '八', '七', '六', '五', '四', '三', '二', '一']
+
+// 生成中国象棋走法记号
+export function moveToString(board: string[][], from: { row: number, col: number }, to: { row: number, col: number }, piece: string): string {
+  const pieceName = PIECE_NAMES[piece] || piece
+  const isRed = piece === piece.toUpperCase()
+  
+  // 起始列号（红方从右到左是九到一，黑方从左到右是1到9）
+  const fromColName = isRed ? COL_NAMES[from.col] : String(from.col + 1)
+  
+  // 目标列号
+  const toColName = isRed ? COL_NAMES[to.col] : String(to.col + 1)
+  
+  // 判断走法类型
+  const rowDiff = to.row - from.row
+  const colDiff = to.col - from.col
+  
+  let action = ''
+  let target = ''
+  
+  if (colDiff === 0) {
+    // 直线走（进/退）
+    if ((isRed && rowDiff < 0) || (!isRed && rowDiff > 0)) {
+      action = '进'
+      target = String(Math.abs(rowDiff))
+    } else {
+      action = '退'
+      target = String(Math.abs(rowDiff))
+    }
+  } else if (rowDiff === 0) {
+    // 平移
+    action = '平'
+    target = toColName
+  } else {
+    // 斜走（马、象、士）
+    if ((isRed && rowDiff < 0) || (!isRed && rowDiff > 0)) {
+      action = '进'
+    } else {
+      action = '退'
+    }
+    target = toColName
+  }
+  
+  return `${pieceName}${fromColName}${action}${target}`
+}
+
 // 走法转 UCI 格式
 export function moveToUci(from: Position, to: Position): string {
   const cols = 'abcdefghi';
