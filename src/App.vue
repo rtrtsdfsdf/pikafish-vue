@@ -133,28 +133,32 @@ function onMove(move: any) {
 function toggleRedAI() {
   redAI.value = !redAI.value
   console.log('Red AI:', redAI.value)
+  updateAutoPlayMode()
 }
 
 function toggleBlackAI() {
   blackAI.value = !blackAI.value
   console.log('Black AI:', blackAI.value)
+  updateAutoPlayMode()
 }
 
-// 监听 AI 状态，自动走棋
-watch([redAI, blackAI, currentTurn, isThinking], async ([red, black, turn, thinking]) => {
-  if (thinking) return // 引擎正在思考，等待
-  
-  // 检查是否需要 AI 走棋
-  const needAI = (turn === 'red' && red) || (turn === 'black' && black)
-  
-  if (needAI && !store.gameOver) {
-    console.log('[AI] Auto move for', turn)
-    // 延迟一小段时间再走，让界面有时间更新
-    setTimeout(() => {
-      store.makeAIMove()
-    }, 300)
+// 更新自动对弈模式
+function updateAutoPlayMode() {
+  if (redAI.value && blackAI.value) {
+    store.setAutoPlayMode('both')
+  } else if (redAI.value) {
+    store.setAutoPlayMode('red')
+  } else if (blackAI.value) {
+    store.setAutoPlayMode('black')
+  } else {
+    store.setAutoPlayMode('none')
   }
-}, { immediate: true })
+}
+
+// 监听 AI 状态变化（主要用于调试）
+watch([redAI, blackAI], ([red, black]) => {
+  console.log('[App] AI state changed:', { red, black })
+})
 
 onMounted(() => {
   console.log('App mounted')
