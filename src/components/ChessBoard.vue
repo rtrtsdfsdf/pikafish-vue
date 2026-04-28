@@ -19,7 +19,9 @@
               'highlight-from': isHighlightFrom(rowIndex, colIndex),
               'highlight-to': isHighlightTo(rowIndex, colIndex),
               'cannon-pos': isCannonPos(rowIndex, colIndex),
-              'pawn-pos': isPawnPos(rowIndex, colIndex)
+              'pawn-pos': isPawnPos(rowIndex, colIndex),
+              'hint-from': isHintFrom(rowIndex, colIndex),
+              'hint-to': isHintTo(rowIndex, colIndex)
             }"
             @click="handleCellClick(rowIndex, colIndex)"
           >
@@ -55,7 +57,9 @@
               'highlight-from': isHighlightFrom(rowIndex + 5, colIndex),
               'highlight-to': isHighlightTo(rowIndex + 5, colIndex),
               'cannon-pos': isCannonPos(rowIndex + 5, colIndex),
-              'pawn-pos': isPawnPos(rowIndex + 5, colIndex)
+              'pawn-pos': isPawnPos(rowIndex + 5, colIndex),
+              'hint-from': isHintFrom(rowIndex + 5, colIndex),
+              'hint-to': isHintTo(rowIndex + 5, colIndex)
             }"
             @click="handleCellClick(rowIndex + 5, colIndex)"
           >
