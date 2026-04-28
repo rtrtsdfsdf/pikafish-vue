@@ -18,6 +18,7 @@
       <div class="board-wrapper" :class="{ flipped: isFlipped }">
         <ChessBoard 
           ref="chessBoardRef"
+          :flipped="isFlipped"
           @move="onMove"
         />
       </div>

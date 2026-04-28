@@ -47,6 +47,10 @@ import { useChessStore } from '@/stores/chess'
 import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic'
 import { Capacitor } from '@capacitor/core'
 
+const props = defineProps<{
+  flipped?: boolean
+}>()
+
 const store = useChessStore()
 
 // 暴露方法给父组件
@@ -81,7 +85,14 @@ function isHighlightTo(row: number, col: number): boolean {
 }
 
 function handleCellClick(row: number, col: number) {
-  const result = store.selectPiece({ row, col })
+  // 如果棋盘翻转，需要转换坐标
+  let actualRow = row
+  let actualCol = col
+  if (props.flipped) {
+    actualRow = 9 - row
+    actualCol = 8 - col
+  }
+  const result = store.selectPiece({ row: actualRow, col: actualCol })
   if (result?.moved) {
     emit('move', result.move)
   }
