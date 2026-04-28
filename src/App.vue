@@ -14,11 +14,31 @@
     
     <!-- 主内容区 -->
     <main class="main-content">
-      <!-- 棋盘 -->
-      <div class="board-wrapper" :class="{ flipped: isFlipped }">
-        <ChessBoard 
-          ref="chessBoardRef"
-          @move="onMove"
+      <div class="game-area">
+        <!-- 黑方信息 -->
+        <PlayerInfo 
+          side="black"
+          :isAI="blackAI"
+          :isActive="currentTurn === 'black'"
+          :isThinking="isThinking && currentTurn === 'black'"
+          :flipped="isFlipped"
+        />
+        
+        <!-- 棋盘 -->
+        <div class="board-wrapper" :class="{ flipped: isFlipped }">
+          <ChessBoard 
+            ref="chessBoardRef"
+            @move="onMove"
+          />
+        </div>
+        
+        <!-- 红方信息 -->
+        <PlayerInfo 
+          side="red"
+          :isAI="redAI"
+          :isActive="currentTurn === 'red'"
+          :isThinking="isThinking && currentTurn === 'red'"
+          :flipped="isFlipped"
         />
       </div>
     </main>
@@ -201,6 +221,13 @@ body {
   padding: 10px;
   overflow: hidden;
   background: linear-gradient(135deg, #3d2914 0%, #2d1810 100%);
+}
+
+.game-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .board-wrapper {

@@ -49,14 +49,14 @@
       
       <!-- 走法记录 -->
       <div v-if="activeTab === 'moves'" class="tab-content moves-list">
-        <div 
-          v-for="(move, index) in moveHistory" 
-          :key="index"
-          class="move-item"
-          :class="{ current: index === currentMoveIndex }""
-        >
-          <span class="move-num">{{ Math.floor(index / 2) + 1 }}.</span>
-          <span class="move-text">{{ move }}</span>
+        <div class="moves-grid">
+          <template v-for="(round, roundIndex) in rounds" :key="roundIndex">
+            <div class="round-row">
+              <span class="round-num">{{ roundIndex + 1 }}.</span>
+              <span class="red-move" :class="{ current: round.redIndex === currentMoveIndex }">{{ round.red || "..." }}</span>
+              <span class="black-move" :class="{ current: round.blackIndex === currentMoveIndex }">{{ round.black || "..." }}</span>
+            </div>
+          </template>
         </div>
         <div v-if="moveHistory.length === 0" class="empty-hint">
           暂无走法记录
@@ -163,6 +163,20 @@ const scoreClass = computed(() => {
 const bestMove = computed(() => {
   if (!props.engineInfo?.pv?.length) return '-'
   return props.engineInfo.pv.slice(0, 4).join(' ')
+})
+
+// 将走法列表转换为回合格式
+const rounds = computed(() => {
+  const result = []
+  for (let i = 0; i < props.moveHistory.length; i += 2) {
+    result.push({
+      red: props.moveHistory[i],
+      redIndex: i,
+      black: props.moveHistory[i + 1] || null,
+      blackIndex: i + 1
+    })
+  }
+  return result
 })
 </script>
 
@@ -282,31 +296,48 @@ const bestMove = computed(() => {
 }
 
 .moves-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
-.move-item {
+.moves-grid {
   display: flex;
-  gap: 4px;
-  padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.1);
+  flex-direction: column;
+  gap: 2px;
+}
+
+.round-row {
+  display: grid;
+  grid-template-columns: 30px 1fr 1fr;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.2);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
-.move-item.current {
+.round-num {
+  color: #888;
+  font-size: 12px;
+}
+
+.red-move, .black-move {
+  color: #f5deb3;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.red-move {
+  color: #ef5350;
+}
+
+.black-move {
+  color: #bdbdbd;
+}
+
+.red-move.current, .black-move.current {
   background: #8B4513;
   color: white;
-}
-
-.move-num {
-  color: #aaa;
-}
-
-.move-text {
-  color: #f5deb3;
 }
 
 .empty-hint {
