@@ -140,7 +140,7 @@ export const useChessStore = defineStore('chess', {
         from: { row: fromRow, col: fromCol },
         to: { row: toRow, col: toCol }
       };
-    }
+    },
     handleEngineMessage(msg: EngineMessage) {
       // 打印所有消息到控制台（会被组件拦截并显示）
       console.log('[Store] Engine message:', msg.type, msg.raw);
@@ -185,7 +185,6 @@ export const useChessStore = defineStore('chess', {
         this.checkAutoPlay();
       }
     },
-
 
     /**
      * 开始引擎分析
