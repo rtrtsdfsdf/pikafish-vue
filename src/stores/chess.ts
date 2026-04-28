@@ -141,7 +141,7 @@ export const useChessStore = defineStore('chess', {
         to: { row: toRow, col: toCol }
       };
     }
-  handleEngineMessage(msg: EngineMessage) {
+    handleEngineMessage(msg: EngineMessage) {
       // 打印所有消息到控制台（会被组件拦截并显示）
       console.log('[Store] Engine message:', msg.type, msg.raw);
       
