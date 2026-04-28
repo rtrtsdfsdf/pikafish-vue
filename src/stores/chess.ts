@@ -182,8 +182,7 @@ export const useChessStore = defineStore('chess', {
       this.pendingAutoMove = autoMove;
       
       // 生成 FEN
-      const fen = boardToFen,
-  moveToString(this.board, this.currentTurn);
+      const fen = boardToFen(this.board, this.currentTurn);
       console.log('[Store] Starting analysis, FEN:', fen, 'autoMove:', autoMove);
       
       await analyzePosition(fen, this.engineDepth);
