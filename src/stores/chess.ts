@@ -96,8 +96,6 @@ export const useChessStore = defineStore('chess', {
         await sendCommand('setoption name Threads value 2');
         await sendCommand('setoption name Hash value 64');
         
-        // 开始初始局面分析
-        this.startEngineAnalysis();
       } else {
         console.error('[Store] Engine initialization failed');
       }
@@ -286,7 +284,7 @@ export const useChessStore = defineStore('chess', {
       
       // 检查是否需要引擎自动走棋
       if (!this.gameOver) {
-        if (isNativePlatform() && isEngineReady()) {
+        if (isNativePlatform() && isEngineReady() && this.autoPlayMode !== 'none') {
           // 延迟一点，让界面有时间更新
           setTimeout(() => {
             this.checkAutoPlay();
@@ -332,9 +330,9 @@ export const useChessStore = defineStore('chess', {
       this.selectedPos = null;
       this.validMoves = [];
       
-      // 重新分析
-      if (isNativePlatform() && isEngineReady()) {
-        this.startEngineAnalysis();
+      // 检查是否需要引擎自动走棋
+      if (isNativePlatform() && isEngineReady() && this.autoPlayMode !== 'none') {
+        setTimeout(() => { this.checkAutoPlay(); }, 300);
       }
     },
 
@@ -356,7 +354,7 @@ export const useChessStore = defineStore('chess', {
       this.pendingAutoMove = false;
       
       // 检查是否需要引擎自动走棋
-      if (isNativePlatform() && isEngineReady()) {
+      if (isNativePlatform() && isEngineReady() && this.autoPlayMode !== 'none') {
         setTimeout(() => {
           this.checkAutoPlay();
         }, 500);
