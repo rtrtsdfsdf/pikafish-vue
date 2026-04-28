@@ -112,9 +112,9 @@ onMounted(async () => {
 
 .board-frame {
   background: linear-gradient(135deg, #d4a574 0%, #c49a6c 50%, #b8956a 100%);
-  border: 6px solid #5d4037;
+  border: 4px solid #5d4037;
   border-radius: 4px;
-  padding: 10px;
+  padding: 6px;
   box-shadow: 
     0 4px 16px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
@@ -132,8 +132,8 @@ onMounted(async () => {
 }
 
 .cell {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -145,16 +145,16 @@ onMounted(async () => {
 }
 
 /* 响应式尺寸 */
-@media (min-width: 380px) {
-  .cell { width: 44px; height: 44px; }
+@media (min-width: 360px) {
+  .cell { width: 38px; height: 38px; }
+}
+
+@media (min-width: 400px) {
+  .cell { width: 42px; height: 42px; }
 }
 
 @media (min-width: 450px) {
-  .cell { width: 50px; height: 50px; }
-}
-
-@media (min-width: 550px) {
-  .cell { width: 56px; height: 56px; }
+  .cell { width: 46px; height: 46px; }
 }
 
 .cell:hover {
@@ -188,19 +188,31 @@ onMounted(async () => {
 }
 
 .piece {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: bold;
   user-select: none;
   box-shadow: 
     2px 2px 4px rgba(0, 0, 0, 0.3),
     inset 0 1px 2px rgba(255, 255, 255, 0.3);
   border: 2px solid;
+}
+
+@media (min-width: 360px) {
+  .piece { width: 34px; height: 34px; font-size: 19px; }
+}
+
+@media (min-width: 400px) {
+  .piece { width: 38px; height: 38px; font-size: 21px; }
+}
+
+@media (min-width: 450px) {
+  .piece { width: 42px; height: 42px; font-size: 23px; }
 }
 
 @media (min-width: 380px) { .piece { font-size: 32px; } }
@@ -222,11 +234,11 @@ onMounted(async () => {
 /* 翻转时棋子保持正向 */
 .river {
   text-align: center;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: bold;
   color: #5d4037;
-  padding: 8px 20px;
-  letter-spacing: 30px;
+  padding: 6px 10px;
+  letter-spacing: 20px;
   background: linear-gradient(90deg, #e8d4a8 0%, #f5deb3 50%, #e8d4a8 100%);
   border-top: 2px solid #5d4037;
   border-bottom: 2px solid #5d4037;
