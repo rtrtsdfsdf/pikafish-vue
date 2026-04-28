@@ -18,7 +18,6 @@
       <div class="board-wrapper" :class="{ flipped: isFlipped }">
         <ChessBoard 
           ref="chessBoardRef"
-          :flipped="isFlipped"
           @move="onMove"
         />
       </div>
@@ -282,5 +281,16 @@ body {
 .setting-item span {
   min-width: 30px;
   text-align: right;
+}
+</style>
+
+<style>
+/* 翻转时棋子和楚河汉界保持正向 */
+.board-wrapper.flipped .piece {
+  transform: rotate(180deg);
+}
+
+.board-wrapper.flipped .river {
+  transform: rotate(180deg);
 }
 </style>

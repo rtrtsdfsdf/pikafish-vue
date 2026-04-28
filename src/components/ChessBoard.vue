@@ -20,13 +20,13 @@
             }"
             @click="handleCellClick(rowIndex, colIndex)"
           >
-            <span v-if="piece !== ' '" class="piece" :class="[getPieceColor(piece), { flipped: flipped }]">
+            <span v-if="piece !== ' '" class="piece" :class="getPieceColor(piece)">
               {{ getPieceName(piece) }}
             </span>
           </div>
         </div>
       </div>
-      <div class="river" :class="{ flipped: flipped }">楚河&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;汉界</div>
+      <div class="river">楚河&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;汉界</div>
     </div>
     
     <!-- 游戏结束提示 -->
@@ -46,10 +46,6 @@ import { onMounted } from 'vue'
 import { useChessStore } from '@/stores/chess'
 import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic'
 import { Capacitor } from '@capacitor/core'
-
-const props = defineProps<{
-  flipped?: boolean
-}>()
 
 const store = useChessStore()
 
@@ -85,14 +81,7 @@ function isHighlightTo(row: number, col: number): boolean {
 }
 
 function handleCellClick(row: number, col: number) {
-  // 如果棋盘翻转，需要转换坐标
-  let actualRow = row
-  let actualCol = col
-  if (props.flipped) {
-    actualRow = 9 - row
-    actualCol = 8 - col
-  }
-  const result = store.selectPiece({ row: actualRow, col: actualCol })
+  const result = store.selectPiece({ row, col })
   if (result?.moved) {
     emit('move', result.move)
   }
@@ -220,10 +209,6 @@ onMounted(async () => {
 }
 
 /* 翻转时棋子保持正向 */
-.piece.flipped {
-  transform: rotate(180deg);
-}
-
 .river {
   text-align: center;
   font-size: 20px;
@@ -234,10 +219,6 @@ onMounted(async () => {
   background: linear-gradient(90deg, #e8d4a8 0%, #f0d9b5 50%, #e8d4a8 100%);
   border-top: 1px solid #c9a86c;
   border-bottom: 1px solid #c9a86c;
-}
-
-.river.flipped {
-  transform: rotate(180deg);
 }
 
 /* 游戏结束遮罩 */
