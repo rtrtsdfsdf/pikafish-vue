@@ -111,20 +111,20 @@ onMounted(async () => {
 }
 
 .board-frame {
-  background: linear-gradient(135deg, #deb887 0%, #d2a679 50%, #c49a6c 100%);
-  border: 4px solid #8B4513;
-  border-radius: 8px;
-  padding: 12px;
+  background: linear-gradient(135deg, #d4a574 0%, #c49a6c 50%, #b8956a 100%);
+  border: 6px solid #5d4037;
+  border-radius: 4px;
+  padding: 10px;
   box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    0 4px 16px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .board {
   display: flex;
   flex-direction: column;
-  background: #f0d9b5;
-  border: 2px solid #8B4513;
+  background: #f5deb3;
+  border: 2px solid #5d4037;
 }
 
 .board-row {
@@ -139,8 +139,8 @@ onMounted(async () => {
   justify-content: center;
   cursor: pointer;
   position: relative;
-  border: 1px solid #c9a86c;
-  background: #f0d9b5;
+  border: 1px solid #8b7355;
+  background: #f5deb3;
   transition: background 0.15s ease;
 }
 
@@ -188,12 +188,19 @@ onMounted(async () => {
 }
 
 .piece {
-  font-size: 28px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
   font-weight: bold;
-  text-shadow: 
-    1px 1px 1px rgba(255, 255, 255, 0.5),
-    -1px -1px 1px rgba(0, 0, 0, 0.2);
   user-select: none;
+  box-shadow: 
+    2px 2px 4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 2px rgba(255, 255, 255, 0.3);
+  border: 2px solid;
 }
 
 @media (min-width: 380px) { .piece { font-size: 32px; } }
@@ -201,24 +208,29 @@ onMounted(async () => {
 @media (min-width: 550px) { .piece { font-size: 40px; } }
 
 .piece.red {
+  background: linear-gradient(145deg, #fff5f5, #ffe0e0);
   color: #c62828;
+  border-color: #c62828;
 }
 
 .piece.black {
+  background: linear-gradient(145deg, #f5f5f5, #e0e0e0);
   color: #212121;
+  border-color: #212121;
 }
 
 /* 翻转时棋子保持正向 */
 .river {
   text-align: center;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: bold;
   color: #5d4037;
-  padding: 10px;
-  letter-spacing: 20px;
-  background: linear-gradient(90deg, #e8d4a8 0%, #f0d9b5 50%, #e8d4a8 100%);
-  border-top: 1px solid #c9a86c;
-  border-bottom: 1px solid #c9a86c;
+  padding: 8px 20px;
+  letter-spacing: 30px;
+  background: linear-gradient(90deg, #e8d4a8 0%, #f5deb3 50%, #e8d4a8 100%);
+  border-top: 2px solid #5d4037;
+  border-bottom: 2px solid #5d4037;
+  font-family: 'KaiTi', 'STKaiti', serif;
 }
 
 /* 游戏结束遮罩 */
