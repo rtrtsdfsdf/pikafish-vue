@@ -160,8 +160,16 @@ watch([redAI, blackAI], ([red, black]) => {
   console.log('[App] AI state changed:', { red, black })
 })
 
+// 监听引擎深度变化，同步到 store
+watch(engineDepth, (newDepth) => {
+  store.engineDepth = newDepth
+  console.log('[App] Engine depth changed:', newDepth)
+})
+
 onMounted(() => {
   console.log('App mounted')
+  // 同步初始引擎深度
+  store.engineDepth = engineDepth.value
 })
 </script>
 

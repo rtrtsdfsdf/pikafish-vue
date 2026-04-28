@@ -42,6 +42,7 @@ export const useChessStore = defineStore('chess', {
     autoPlayMode: 'none',  // 自动对弈模式
     logs: [],  // 日志数组
     pendingAutoMove: false,  // 是否等待自动执行走法
+    engineDepth: 20,  // 引擎分析深度
   }),
 
   actions: {
@@ -183,7 +184,7 @@ export const useChessStore = defineStore('chess', {
       const fen = boardToFen(this.board, this.currentTurn);
       console.log('[Store] Starting analysis, FEN:', fen, 'autoMove:', autoMove);
       
-      await analyzePosition(fen, 20);
+      await analyzePosition(fen, this.engineDepth);
     },
 
     /**
