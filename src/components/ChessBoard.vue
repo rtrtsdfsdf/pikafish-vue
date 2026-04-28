@@ -132,7 +132,17 @@ function isPawnPos(row: number, col: number): boolean {
   return (row === 3 && col % 2 === 0) || (row === 6 && col % 2 === 0)
 }
 
+// 提示走法高亮
+function isHintFrom(row: number, col: number): boolean {
+  return store.hintMove?.from.row === row && store.hintMove?.from.col === col
+}
+
+function isHintTo(row: number, col: number): boolean {
+  return store.hintMove?.to.row === row && store.hintMove?.to.col === col
+}
+
 function handleCellClick(row: number, col: number) {
+  store.clearHint()
   const result = store.selectPiece({ row, col })
   if (result?.moved) {
     emit('move', result.move)
@@ -266,6 +276,16 @@ onMounted(async () => {
 
 .cell.valid-move {
   background: rgba(144, 238, 144, 0.5) !important;
+}
+
+.cell.hint-from {
+  background: rgba(33, 150, 243, 0.4) !important;
+  box-shadow: inset 0 0 8px rgba(33, 150, 243, 0.6);
+}
+
+.cell.hint-to {
+  background: rgba(33, 150, 243, 0.6) !important;
+  box-shadow: inset 0 0 12px rgba(33, 150, 243, 0.8);
 }
 
 .cell.valid-move::after {

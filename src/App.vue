@@ -5,8 +5,10 @@
       :red-a-i="redAI"
       :black-a-i="blackAI"
       :current-turn="currentTurn"
+      :is-thinking="store.engineThinking"
       @menu="showMenu = true"
       @new-game="handleNewGame"
+      @hint="handleHint"
       @toggle-red-a-i="toggleRedAI"
       @toggle-black-a-i="toggleBlackAI"
       @flip-board="flipBoard"
@@ -96,6 +98,10 @@ const currentTurn = computed(() => store.currentTurn)
 // Methods
 function handleNewGame() {
   store.resetGame()
+}
+
+async function handleHint() {
+  await store.getHint()
 }
 
 function flipBoard() {

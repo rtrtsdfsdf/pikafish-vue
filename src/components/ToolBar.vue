@@ -70,6 +70,7 @@ defineProps<{
 defineEmits<{
   menu: []
   newGame: []
+  hint: []
   toggleRedAI: []
   toggleBlackAI: []
   flipBoard: []
@@ -186,5 +187,14 @@ defineEmits<{
 
 .toolbar-btn:active {
   transform: scale(0.95);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hint-btn:not(:disabled) {
+  background: rgba(255, 193, 7, 0.2);
 }
 </style>
