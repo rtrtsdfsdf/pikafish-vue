@@ -41,4 +41,7 @@ export interface GameState {
   engineInfo: EngineInfo | null;
   gameOver: boolean;
   winner: 'red' | 'black' | null;
+  autoPlayMode: 'none' | 'red' | 'black' | 'both';
+  pendingAutoMove: boolean;
+  logs: { time: string; message: string; }[];
 }

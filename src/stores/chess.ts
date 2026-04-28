@@ -39,8 +39,9 @@ export const useChessStore = defineStore('chess', {
     engineInfo: null,
     gameOver: false,
     winner: null,
-    autoPlayMode: 'none',  // 新增：自动对弈模式
-    logs: [],  // 新增：日志数组
+    autoPlayMode: 'none',  // 自动对弈模式
+    logs: [],  // 日志数组
+    pendingAutoMove: false,  // 是否等待自动执行走法
   }),
 
   actions: {
@@ -164,7 +165,6 @@ export const useChessStore = defineStore('chess', {
       }
     },
 
-    pendingAutoMove: false,  // 是否等待自动执行走法
 
     /**
      * 开始引擎分析
