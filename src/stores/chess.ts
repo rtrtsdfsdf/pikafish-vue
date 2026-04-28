@@ -169,7 +169,14 @@ export const useChessStore = defineStore('chess', {
           if (this.pendingAutoMove) {
             this.pendingAutoMove = false;
             this.executeEngineMove(msg.data.move);
+          } else {
+            // 这是提示走法
+            const move = this.parseUciMove(msg.data.move as string);
+            if (move) {
+              this.hintMove = move;
+            }
           }
+          return;
         }
       } else if (msg.type === 'uciok') {
         console.log('[Store] UCI OK received');
@@ -199,6 +206,28 @@ export const useChessStore = defineStore('chess', {
       console.log('[Store] Starting analysis, FEN:', fen, 'autoMove:', autoMove);
       
       await analyzePosition(fen, this.engineDepth);
+    },
+
+    /**
+     * 获取提示走法
+     */
+    async getHint() {
+      if (this.engineThinking || this.gameOver) return
+      
+      this.engineThinking = true
+      this.hintMove = null
+      
+      const fen = boardToFen(this.board, this.currentTurn)
+      console.log('[Store] Getting hint for FEN:', fen)
+      
+      await analyzePosition(fen, Math.min(this.engineDepth, 15))
+    },
+
+    /**
+     * 清除提示
+     */
+    clearHint() {
+      this.hintMove = null
     },
 
     /**
