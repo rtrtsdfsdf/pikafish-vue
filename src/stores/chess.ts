@@ -131,17 +131,16 @@ export const useChessStore = defineStore('chess', {
      * 处理引擎消息
      */
     parseUciMove(uci: string): { from: Position, to: Position } | null {
-    if (!uci || uci.length < 4) return null
-    const fromCol = uci.charCodeAt(0) - 97
-    const fromRow = 9 - parseInt(uci[1])
-    const toCol = uci.charCodeAt(2) - 97
-    const toRow = 9 - parseInt(uci[3])
-    return {
-      from: { row: fromRow, col: fromCol },
-      to: { row: toRow, col: toCol }
+      if (!uci || uci.length < 4) return null;
+      const fromCol = uci.charCodeAt(0) - 97;
+      const fromRow = 9 - parseInt(uci[1]);
+      const toCol = uci.charCodeAt(2) - 97;
+      const toRow = 9 - parseInt(uci[3]);
+      return {
+        from: { row: fromRow, col: fromCol },
+        to: { row: toRow, col: toCol }
+      };
     }
-  }
-
   handleEngineMessage(msg: EngineMessage) {
       // 打印所有消息到控制台（会被组件拦截并显示）
       console.log('[Store] Engine message:', msg.type, msg.raw);
@@ -427,6 +426,6 @@ export const useChessStore = defineStore('chess', {
      */
     async cleanup() {
       await quitEngine();
-    }
+      }
   }
 });
