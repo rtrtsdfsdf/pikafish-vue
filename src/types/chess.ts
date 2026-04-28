@@ -46,4 +46,5 @@ export interface GameState {
   pendingAutoMove: boolean;
   engineDepth: number;
   logs: { time: string; message: string; }[];
+  hintMove: { from: Position; to: Position } | null;
 }
