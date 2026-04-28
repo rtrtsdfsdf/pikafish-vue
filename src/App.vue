@@ -4,6 +4,7 @@
     <ToolBar 
       :red-a-i="redAI"
       :black-a-i="blackAI"
+      :current-turn="currentTurn"
       @menu="showMenu = true"
       @new-game="handleNewGame"
       @toggle-red-a-i="toggleRedAI"
@@ -14,31 +15,11 @@
     
     <!-- 主内容区 -->
     <main class="main-content">
-      <div class="game-area">
-        <!-- 黑方信息 -->
-        <PlayerInfo 
-          side="black"
-          :isAI="blackAI"
-          :isActive="currentTurn === 'black'"
-          :isThinking="isThinking && currentTurn === 'black'"
-          :flipped="isFlipped"
-        />
-        
-        <!-- 棋盘 -->
-        <div class="board-wrapper" :class="{ flipped: isFlipped }">
-          <ChessBoard 
-            ref="chessBoardRef"
-            @move="onMove"
-          />
-        </div>
-        
-        <!-- 红方信息 -->
-        <PlayerInfo 
-          side="red"
-          :isAI="redAI"
-          :isActive="currentTurn === 'red'"
-          :isThinking="isThinking && currentTurn === 'red'"
-          :flipped="isFlipped"
+      <!-- 棋盘 -->
+      <div class="board-wrapper" :class="{ flipped: isFlipped }">
+        <ChessBoard 
+          ref="chessBoardRef"
+          @move="onMove"
         />
       </div>
     </main>
@@ -87,7 +68,6 @@ import { ref, computed, watch, onMounted } from 'vue'
 import ToolBar from './components/ToolBar.vue'
 import BottomPanel from './components/BottomPanel.vue'
 import ChessBoard from './components/ChessBoard.vue'
-import PlayerInfo from './components/PlayerInfo.vue'
 import { useChessStore } from '@/stores/chess'
 
 const store = useChessStore()
@@ -224,12 +204,6 @@ body {
   background: linear-gradient(135deg, #3d2914 0%, #2d1810 100%);
 }
 
-.game-area {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
 
 .board-wrapper {
   transition: transform 0.3s ease;
