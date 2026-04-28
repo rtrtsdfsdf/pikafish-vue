@@ -268,8 +268,6 @@ onMounted(async () => {
   align-items: center;
   height: 36px;
   background: #f5deb3;
-  border-top: 1px solid #8b7355;
-  border-bottom: 1px solid #8b7355;
   padding: 0 8px;
 }
 
