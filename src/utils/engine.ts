@@ -1,290 +1,182 @@
-// Pikafish 引擎封装 - 使用 Capacitor 原生插件
+// Pikafish WASM 引擎封装
 
-import { Capacitor } from '@capacitor/core';
-import PikafishEngine from '../plugins/PikafishEngine';
-import type { PluginListenerHandle } from '@capacitor/core';
+let engineWorker: Worker | null = null;
+let messageCallback: ((msg: string) => void) | null = null;
 
-export interface EngineMessage {
-  type: 'info' | 'bestmove' | 'uciok' | 'readyok' | 'id' | 'option' | 'error' | 'other';
-  raw: string;
-  data?: Record<string, unknown>;
-}
-
-export type MessageCallback = (msg: EngineMessage) => void;
-
-let isInitialized = false;
-let isReady = false;
-let messageCallback: MessageCallback | null = null;
-let listenerHandle: PluginListenerHandle | null = null;
-let pendingReadyResolve: (() => void) | null = null;
-let onReadyCallbacks: Array<() => void> = [];  // 新增：等待就绪的回调
-
-/**
- * 初始化引擎
- */
-export async function initEngine(onMessage: MessageCallback): Promise<boolean> {
-  if (isInitialized) {
-    return true;
+// 初始化引擎
+export async function initEngine(onMessage: (msg: string) => void): Promise<void> {
+  if (engineWorker) {
+    return;
   }
 
   messageCallback = onMessage;
 
-  try {
-    // 监听引擎输出事件
-    listenerHandle = await PikafishEngine.addListener('engineMessage', (data: { message: string }) => {
-      const msg = parseEngineMessage(data.message);
+  // 创建 Worker 来加载 WASM
+  const workerCode = `
+    let pikafish: any = null;
+    
+    // 监听主线程消息
+    self.onmessage = async (e) => {
+      const { type, data } = e.data;
       
-      // 处理 readyok
-      if (msg.type === 'readyok') {
-        isReady = true;
-        console.log('[Engine] Engine is ready!');
-        
-        // 执行等待中的回调
-        if (pendingReadyResolve) {
-          pendingReadyResolve();
-          pendingReadyResolve = null;
+      if (type === 'init') {
+        try {
+          // 动态导入 pikafish.js
+          importScripts('/engine/pikafish.js');
+          
+          // @ts-ignore
+          const PikafishModule = await Pikafish({
+            locateFile: (path: string) => '/engine/' + path
+          });
+          
+          pikafish = PikafishModule;
+          
+          // 设置消息监听
+          pikafish.addMessageListener((line: string) => {
+            self.postMessage({ type: 'message', data: line });
+          });
+          
+          self.postMessage({ type: 'ready' });
+        } catch (err) {
+          self.postMessage({ type: 'error', data: String(err) });
         }
-        
-        // 执行所有等待就绪的回调
-        onReadyCallbacks.forEach(cb => cb());
-        onReadyCallbacks = [];
+      } else if (type === 'command') {
+        if (pikafish) {
+          pikafish.postMessage(data);
+        }
       }
-      
-      if (messageCallback) {
-        messageCallback(msg);
-      }
-    });
-    
-    // 初始化引擎
-    const result = await PikafishEngine.init();
-    
-    if (!result.success) {
-      console.error('[Engine] Init failed:', result.error);
-      return false;
-    }
-    
-    isInitialized = true;
-    console.log('[Engine] Initialized successfully');
-    
-    // Java 插件已经完成了 UCI 初始化和 NNUE 加载
-    // 这里只需要等待 readyok
-    await waitForReady();
-    
-    return true;
-  } catch (error) {
-    console.error('[Engine] Init error:', error);
-    return false;
-  }
-}
-
-/**
- * 等待引擎就绪
- */
-async function waitForReady(): Promise<void> {
-  return new Promise((resolve) => {
-    if (isReady) {
-      resolve();
+    };
+  `;
+  
+  const blob = new Blob([workerCode], { type: 'application/javascript' });
+  const workerUrl = URL.createObjectURL(blob);
+  
+  engineWorker = new Worker(workerUrl);
+  
+  return new Promise((resolve, reject) => {
+    if (!engineWorker) {
+      reject(new Error('Failed to create worker'));
       return;
     }
     
-    pendingReadyResolve = resolve;
-    sendCommand('isready');
-    
-    // 超时保护
-    setTimeout(() => {
-      if (pendingReadyResolve) {
-        console.warn('[Engine] Ready timeout, continuing anyway');
-        isReady = true;  // 假设就绪
-        pendingReadyResolve = null;
-        resolve();
+    engineWorker.onmessage = (e) => {
+      const { type, data } = e.data;
+      
+      if (type === 'ready') {
+        // 发送 UCI 初始化命令
+        sendCommand('uci');
+        setTimeout(() => {
+          sendCommand('isready');
+          resolve();
+        }, 100);
+      } else if (type === 'message') {
+        if (messageCallback) {
+          messageCallback(data);
+        }
+      } else if (type === 'error') {
+        reject(new Error(data));
       }
-    }, 5000);
+    };
+    
+    engineWorker.onerror = (err) => {
+      reject(err);
+    };
+    
+    // 初始化引擎
+    engineWorker.postMessage({ type: 'init' });
   });
 }
 
-/**
- * 当引擎就绪时执行回调
- */
-export function whenReady(callback: () => void): void {
-  if (isReady) {
-    callback();
-  } else {
-    onReadyCallbacks.push(callback);
+// 发送命令到引擎
+export function sendCommand(cmd: string): void {
+  if (engineWorker) {
+    engineWorker.postMessage({ type: 'command', data: cmd });
   }
 }
 
-/**
- * 发送 UCI 命令
- */
-export async function sendCommand(command: string): Promise<boolean> {
-  if (!isInitialized) {
-    console.error('[Engine] Not initialized');
-    return false;
-  }
-
-  try {
-    const result = await PikafishEngine.sendCommand({ command });
-    return result.success;
-  } catch (error) {
-    console.error('[Engine] Send command error:', error);
-    return false;
-  }
+// 设置位置 (FEN 格式)
+export function setPosition(fen: string): void {
+  sendCommand(`position fen ${fen}`);
 }
 
-/**
- * 开始分析局面
- */
-export async function analyzePosition(fen: string, depth: number = 20): Promise<void> {
-  console.log('[Engine] Analyzing position:', fen);
-  await sendCommand('stop');
-  await sendCommand(`position fen ${fen}`);
-  await sendCommand(`go depth ${depth}`);
+// 开始分析
+export function startAnalysis(depth: number = 20): void {
+  sendCommand(`go depth ${depth}`);
 }
 
-/**
- * 停止分析
- */
-export async function stopAnalysis(): Promise<void> {
-  await sendCommand('stop');
+// 停止分析
+export function stopAnalysis(): void {
+  sendCommand('stop');
 }
 
-/**
- * 关闭引擎
- */
-export async function quitEngine(): Promise<void> {
-  if (isInitialized) {
-    await sendCommand('quit');
-    await PikafishEngine.quit();
-    
-    // 移除监听器
-    if (listenerHandle) {
-      try {
-        await listenerHandle.remove();
-      } catch (e) {
-        console.warn('[Engine] Failed to remove listener:', e);
-      }
-      listenerHandle = null;
+// 设置哈希大小 (MB)
+export function setHashSize(mb: number): void {
+  sendCommand(`setoption name Hash value ${mb}`);
+}
+
+// 设置线程数
+export function setThreads(n: number): void {
+  sendCommand(`setoption name Threads value ${n}`);
+}
+
+// 解析引擎输出
+export function parseEngineLine(line: string): {
+  type: 'info' | 'bestmove' | 'uciok' | 'readyok' | 'other';
+  data?: any;
+} {
+  if (line.startsWith('info')) {
+    const info = parseInfoLine(line);
+    return { type: 'info', data: info };
+  } else if (line.startsWith('bestmove')) {
+    const match = line.match(/bestmove\s+(\w+)/);
+    if (match) {
+      return { type: 'bestmove', data: match[1] };
     }
-    
-    isInitialized = false;
-    isReady = false;
+  } else if (line === 'uciok') {
+    return { type: 'uciok' };
+  } else if (line === 'readyok') {
+    return { type: 'readyok' };
   }
+  return { type: 'other' };
 }
 
-/**
- * 解析引擎消息
- */
-function parseEngineMessage(raw: string): EngineMessage {
-  const trimmed = raw.trim();
+function parseInfoLine(line: string): any {
+  const result: any = {};
   
-  // UCI 协议消息解析
-  if (trimmed.startsWith('id ')) {
-    return { type: 'id', raw: trimmed };
-  }
+  const depthMatch = line.match(/depth\s+(\d+)/);
+  if (depthMatch) result.depth = parseInt(depthMatch[1] || '0');
   
-  if (trimmed.startsWith('option ')) {
-    return { type: 'option', raw: trimmed };
-  }
-  
-  if (trimmed === 'uciok') {
-    return { type: 'uciok', raw: trimmed };
-  }
-  
-  if (trimmed === 'readyok') {
-    return { type: 'readyok', raw: trimmed };
-  }
-  
-  if (trimmed.startsWith('info')) {
-    return {
-      type: 'info',
-      raw: trimmed,
-      data: parseInfo(trimmed)
-    };
-  }
-  
-  if (trimmed.startsWith('bestmove')) {
-    const parts = trimmed.split(/\s+/);
-    return {
-      type: 'bestmove',
-      raw: trimmed,
-      data: {
-        move: parts[1],
-        ponder: parts.length > 3 ? parts[3] : undefined
-      }
-    };
-  }
-  
-  // 错误消息
-  if (trimmed.toLowerCase().includes('error')) {
-    return { type: 'error', raw: trimmed };
-  }
-  
-  return { type: 'other', raw: trimmed };
-}
-
-/**
- * 解析 info 行
- * 示例：info depth 20 seldepth 24 multipv 1 score cp 72 nodes 123456 nps 1234567 time 1000 pv h2e2 h9g7
- */
-function parseInfo(info: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  
-  // 解析 depth
-  const depthMatch = info.match(/depth\s+(\d+)/);
-  if (depthMatch) result.depth = parseInt(depthMatch[1]);
-  
-  // 解析 seldepth
-  const seldepthMatch = info.match(/seldepth\s+(\d+)/);
-  if (seldepthMatch) result.seldepth = parseInt(seldepthMatch[1]);
-  
-  // 解析 multipv
-  const multipvMatch = info.match(/multipv\s+(\d+)/);
-  if (multipvMatch) result.multipv = parseInt(multipvMatch[1]);
-  
-  // 解析 score (cp 或 mate)
-  const scoreMatch = info.match(/score\s+(cp|mate)\s+(-?\d+)/);
+  const scoreMatch = line.match(/score\s+(cp|mate)\s+(-?\d+)/);
   if (scoreMatch) {
-    result.scoreType = scoreMatch[1];
-    result.score = parseInt(scoreMatch[2]);
+    if (scoreMatch[1] === 'cp') {
+      result.score = parseInt(scoreMatch[2] || '0');
+    } else {
+      result.mate = parseInt(scoreMatch[2] || '0');
+    }
   }
   
-  // 解析 nodes
-  const nodesMatch = info.match(/nodes\s+(\d+)/);
-  if (nodesMatch) result.nodes = parseInt(nodesMatch[1]);
+  const nodesMatch = line.match(/nodes\s+(\d+)/);
+  if (nodesMatch) result.nodes = parseInt(nodesMatch[1] || '0');
   
-  // 解析 nps
-  const npsMatch = info.match(/nps\s+(\d+)/);
-  if (npsMatch) result.nps = parseInt(npsMatch[1]);
+  const npsMatch = line.match(/nps\s+(\d+)/);
+  if (npsMatch) result.nps = parseInt(npsMatch[1] || '0');
   
-  // 解析 time
-  const timeMatch = info.match(/time\s+(\d+)/);
-  if (timeMatch) result.time = parseInt(timeMatch[1]);
+  const timeMatch = line.match(/time\s+(\d+)/);
+  if (timeMatch) result.time = parseInt(timeMatch[1] || '0');
   
-  // 解析 pv (主要变例) - 注意：pv 是最后一个字段，后面全是走法
-  const pvMatch = info.match(/\spv\s+(.+)$/);
-  if (pvMatch) result.pv = pvMatch[1].trim().split(/\s+/);
-  
-  // 解析 hashfull
-  const hashMatch = info.match(/hashfull\s+(\d+)/);
-  if (hashMatch) result.hashfull = parseInt(hashMatch[1]);
-  
-  // 解析 tbhits
-  const tbMatch = info.match(/tbhits\s+(\d+)/);
-  if (tbMatch) result.tbhits = parseInt(tbMatch[1]);
+  const pvMatch = line.match(/\spv\s+(.+)/);
+  if (pvMatch) {
+    result.pv = (pvMatch[1] || '').trim().split(/\s+/);
+  }
   
   return result;
 }
 
-/**
- * 检查是否在原生平台
- */
-export function isNativePlatform(): boolean {
-  return Capacitor.isNativePlatform();
-}
-
-/**
- * 检查引擎是否就绪
- */
-export function isEngineReady(): boolean {
-  return isInitialized && isReady;
+// 销毁引擎
+export function destroyEngine(): void {
+  if (engineWorker) {
+    sendCommand('quit');
+    engineWorker.terminate();
+    engineWorker = null;
+  }
 }

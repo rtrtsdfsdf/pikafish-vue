@@ -220,7 +220,9 @@ function getRookMoves(board: string[][], row: number, col: number, color: PieceC
   const moves: Position[] = [];
   const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
   
-  for (const [dr, dc] of directions) {
+  for (const dir of directions) {
+    const dr = dir[0]!;
+    const dc = dir[1]!;
     let newRow = row + dr;
     let newCol = col + dc;
     
@@ -247,7 +249,9 @@ function getCannonMoves(board: string[][], row: number, col: number, color: Piec
   const moves: Position[] = [];
   const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
   
-  for (const [dr, dc] of directions) {
+  for (const dir of directions) {
+    const dr = dir[0]!;
+    const dc = dir[1]!;
     let newRow = row + dr;
     let newCol = col + dc;
     let jumped = false;
@@ -316,21 +320,8 @@ export function makeMove(board: string[][], from: Position, to: Position): strin
   return newBoard;
 }
 
-/**
- * 棋盘转 FEN（中国象棋格式）
- * 格式：rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1
- * 
- * @param board 棋盘
- * @param turn 当前回合 ('red' | 'black')
- * @param halfMoves 半回合数（可选）
- * @param fullMoves 完整回合数（可选）
- */
-export function boardToFen(
-  board: string[][], 
-  turn: 'red' | 'black' = 'red',
-  halfMoves: number = 0,
-  fullMoves: number = 1
-): string {
+// 棋盘转 FEN
+export function boardToFen(board: string[][]): string {
   const fenRows: string[] = [];
   
   for (const row of board) {
@@ -356,11 +347,7 @@ export function boardToFen(
     fenRows.push(fenRow);
   }
   
-  // 中国象棋 FEN：回合标记 w=红方(大写), b=黑方(小写)
-  const turnChar = turn === 'red' ? 'w' : 'b';
-  
-  // 完整 FEN 格式
-  return `${fenRows.join('/')} ${turnChar} - - ${halfMoves} ${fullMoves}`;
+  return fenRows.join('/');
 }
 // 列号转中文
 const COL_NAMES = ['九', '八', '七', '六', '五', '四', '三', '二', '一']
@@ -420,10 +407,10 @@ export function uciToMove(uci: string): { from: Position; to: Position } | null 
   if (uci.length < 4) return null;
   
   const cols = 'abcdefghi';
-  const fromCol = cols.indexOf(uci[0] || '');
-  const fromRow = 9 - parseInt(uci[1] || '0');
-  const toCol = cols.indexOf(uci[2] || '');
-  const toRow = 9 - parseInt(uci[3] || '0');
+  const fromCol = cols.indexOf(uci[0]!);
+  const fromRow = 9 - parseInt(uci[1]!, 10);
+  const toCol = cols.indexOf(uci[2]!);
+  const toRow = 9 - parseInt(uci[3]!, 10);
   
   if (fromCol < 0 || toCol < 0) return null;
   

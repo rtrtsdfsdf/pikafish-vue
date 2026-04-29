@@ -1,320 +1,204 @@
 <template>
-  <div class="chess-board-container">
+  <div class="chess-board">
     <!-- 棋盘 -->
-    <div class="board-frame">
-      <div class="board">
-        <!-- 上半部分（黑方，第0-4行） -->
-        <div 
-          v-for="(row, rowIndex) in store.board.slice(0, 5)" 
-          :key="rowIndex"
-          class="board-row"
-        >
-          <div
-            v-for="(piece, colIndex) in row"
-            :key="colIndex"
-            class="cell"
-            :class="{
-              'selected': isSelected(rowIndex, colIndex),
-              'valid-move': isValidMove(rowIndex, colIndex),
-              'highlight-from': isHighlightFrom(rowIndex, colIndex),
-              'highlight-to': isHighlightTo(rowIndex, colIndex),
-              'cannon-pos': isCannonPos(rowIndex, colIndex),
-              'pawn-pos': isPawnPos(rowIndex, colIndex),
-              'hint-from': isHintFrom(rowIndex, colIndex),
-              'hint-to': isHintTo(rowIndex, colIndex)
-            }"
-            @click="handleCellClick(rowIndex, colIndex)"
+    <div class="board-container">
+      <div class="board-wrapper">
+        <div class="board">
+          <div 
+            v-for="(row, rowIndex) in store.board" 
+            :key="rowIndex"
+            class="board-row"
           >
-            <!-- 炮位标记 -->
-            <div v-if="isCannonPos(rowIndex, colIndex) && piece === ' '" class="pos-mark cannon-mark"></div>
-            <!-- 兵站标记 -->
-            <div v-if="isPawnPos(rowIndex, colIndex) && piece === ' '" class="pos-mark pawn-mark"></div>
-            <span v-if="piece !== ' '" class="piece" :class="getPieceColor(piece)">
-              {{ getPieceName(piece) }}
-            </span>
+            <div
+              v-for="(piece, colIndex) in row"
+              :key="colIndex"
+              class="cell"
+              :class="{
+                'selected': isSelected(rowIndex, colIndex),
+                'valid-move': isValidMove(rowIndex, colIndex),
+                'red-piece': getPieceColor(piece) === 'red',
+                'black-piece': getPieceColor(piece) === 'black'
+              }"
+              @click="handleCellClick(rowIndex, colIndex)"
+            >
+              <span v-if="piece !== ' '" class="piece">
+                {{ getPieceName(piece) }}
+              </span>
+            </div>
           </div>
         </div>
         
-        <!-- 楚河汉界 -->
-        <div class="river">
-          <span class="river-left">楚 河</span>
-          <span class="river-right">汉 界</span>
+        <!-- 箭头 SVG 覆盖层 -->
+        <svg class="arrows-overlay" viewBox="0 0 450 500">
+          <defs>
+            <!-- 箭头标记 -->
+            <marker 
+              id="arrowhead" 
+              markerWidth="10" 
+              markerHeight="7" 
+              refX="9" 
+              refY="3.5" 
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" />
+            </marker>
+          </defs>
+          
+          <!-- 绘制每个箭头 -->
+          <line
+            v-for="(arrow, index) in store.arrows"
+            :key="index"
+            :x1="getArrowX(arrow.from.col)"
+            :y1="getArrowY(arrow.from.row)"
+            :x2="getArrowX(arrow.to.col)"
+            :y2="getArrowY(arrow.to.row)"
+            :stroke="arrow.color"
+            stroke-width="4"
+            marker-end="url(#arrowhead)"
+            class="arrow-line"
+          />
+        </svg>
+      </div>
+      
+      <!-- 楚河汉界 -->
+      <div class="river">楚河&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;汉界</div>
+    </div>
+
+    <!-- 信息面板 -->
+    <div class="info-panel">
+      <div class="turn-indicator">
+        当前回合: {{ store.currentTurn === 'red' ? '红方' : '黑方' }}
+      </div>
+      
+      <!-- 引擎信息 -->
+      <div v-if="store.engineInfo" class="engine-info">
+        <div>深度: {{ store.engineInfo.depth }}</div>
+        <div v-if="store.engineInfo.score">
+          分数: {{ store.engineInfo.score > 0 ? '+' : '' }}{{ store.engineInfo.score / 100 }}
         </div>
-        
-        <!-- 下半部分（红方，第5-9行） -->
-        <div 
-          v-for="(row, rowIndex) in store.board.slice(5)" 
-          :key="rowIndex + 5"
-          class="board-row"
-        >
-          <div
-            v-for="(piece, colIndex) in row"
-            :key="colIndex"
-            class="cell"
-            :class="{
-              'selected': isSelected(rowIndex + 5, colIndex),
-              'valid-move': isValidMove(rowIndex + 5, colIndex),
-              'highlight-from': isHighlightFrom(rowIndex + 5, colIndex),
-              'highlight-to': isHighlightTo(rowIndex + 5, colIndex),
-              'cannon-pos': isCannonPos(rowIndex + 5, colIndex),
-              'pawn-pos': isPawnPos(rowIndex + 5, colIndex),
-              'hint-from': isHintFrom(rowIndex + 5, colIndex),
-              'hint-to': isHintTo(rowIndex + 5, colIndex)
-            }"
-            @click="handleCellClick(rowIndex + 5, colIndex)"
-          >
-            <!-- 炮位标记 -->
-            <div v-if="isCannonPos(rowIndex + 5, colIndex) && piece === ' '" class="pos-mark cannon-mark"></div>
-            <!-- 兵站标记 -->
-            <div v-if="isPawnPos(rowIndex + 5, colIndex) && piece === ' '" class="pos-mark pawn-mark"></div>
-            <span v-if="piece !== ' '" class="piece" :class="getPieceColor(piece)">
-              {{ getPieceName(piece) }}
-            </span>
-          </div>
+        <div v-if="store.engineInfo.mate">
+          杀棋: {{ store.engineInfo.mate }} 步
+        </div>
+        <div v-if="store.engineInfo.pv" class="pv">
+          最佳走法: {{ store.engineInfo.pv.slice(0, 3).join(' ') }}
         </div>
       </div>
-    </div>
-    
-    <!-- 游戏结束提示 -->
-    <div v-if="store.gameOver" class="game-over-overlay">
-      <div class="game-over-content">
-        <div class="winner-text">
-          {{ store.winner === 'red' ? '🔴 红方' : '⚫ 黑方' }}获胜!
-        </div>
-        <button @click="store.resetGame()" class="restart-btn">再来一局</button>
+      
+      <div v-if="store.engineThinking" class="thinking">
+        引擎分析中...
+      </div>
+      
+      <!-- 游戏结束 -->
+      <div v-if="store.gameOver" class="game-over">
+        游戏结束! {{ store.winner === 'red' ? '红方' : '黑方' }}获胜!
+      </div>
+      
+      <!-- 控制按钮 -->
+      <div class="controls">
+        <button @click="store.undoMove()" :disabled="store.history.length === 0">
+          悔棋
+        </button>
+        <button @click="store.resetGame()">重新开始</button>
+        <button @click="store.flipBoard()">翻转棋盘</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useChessStore } from '@/stores/chess'
-import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic'
-import { Capacitor } from '@capacitor/core'
+import { onMounted } from 'vue';
+import { useChessStore } from '@/stores/chess';
+import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic';
 
-const store = useChessStore()
+const store = useChessStore();
 
-// 暴露方法给父组件
-defineExpose({
-  reset: () => store.resetGame(),
-  undo: () => store.undoMove()
-})
+// 棋盘尺寸常量
+const CELL_SIZE = 50; // 每格 50px
 
-// 事件
-const emit = defineEmits<{
-  move: [move: any]
-}>()
+onMounted(async () => {
+  await store.initGameEngine();
+});
 
 function getPieceName(piece: string): string {
-  return PIECE_NAMES[piece] || ''
+  return PIECE_NAMES[piece] || '';
 }
 
 function isSelected(row: number, col: number): boolean {
-  return store.selectedPos?.row === row && store.selectedPos?.col === col
+  return store.selectedPos?.row === row && store.selectedPos?.col === col;
 }
 
 function isValidMove(row: number, col: number): boolean {
-  return store.validMoves.some(m => m.row === row && m.col === col)
-}
-
-function isHighlightFrom(row: number, col: number): boolean {
-  return store.lastMove?.from.row === row && store.lastMove?.from.col === col
-}
-
-function isHighlightTo(row: number, col: number): boolean {
-  return store.lastMove?.to.row === row && store.lastMove?.to.col === col
-}
-
-// 炮位：(1,2), (7,2) 黑方; (1,7), (7,7) 红方
-function isCannonPos(row: number, col: number): boolean {
-  return (row === 2 && (col === 1 || col === 7)) || (row === 7 && (col === 1 || col === 7))
-}
-
-// 兵站：(0,3), (2,3), (4,3), (6,3), (8,3) 黑方; (0,6), (2,6), (4,6), (6,6), (8,6) 红方
-function isPawnPos(row: number, col: number): boolean {
-  return (row === 3 && col % 2 === 0) || (row === 6 && col % 2 === 0)
-}
-
-// 提示走法高亮
-function isHintFrom(row: number, col: number): boolean {
-  return store.hintMove?.from.row === row && store.hintMove?.from.col === col
-}
-
-function isHintTo(row: number, col: number): boolean {
-  return store.hintMove?.to.row === row && store.hintMove?.to.col === col
+  return store.validMoves.some(m => m.row === row && m.col === col);
 }
 
 function handleCellClick(row: number, col: number) {
-  store.clearHint()
-  const result = store.selectPiece({ row, col })
-  if (result?.moved) {
-    emit('move', result.move)
-  }
+  store.selectPiece({ row, col });
 }
 
-onMounted(async () => {
-  console.log('[ChessBoard] Platform:', Capacitor.getPlatform())
-  
-  if (Capacitor.isNativePlatform()) {
-    console.log('[ChessBoard] Initializing engine...')
-    try {
-      await store.initGameEngine()
-      console.log('[ChessBoard] Engine initialized')
-    } catch (e) {
-      console.error('[ChessBoard] Engine init failed:', e)
-    }
-  }
-})
+// 计算箭头的 X 坐标（格子中心）
+function getArrowX(col: number): number {
+  return col * CELL_SIZE + CELL_SIZE / 2;
+}
+
+// 计算箭头的 Y 坐标（格子中心）
+function getArrowY(row: number): number {
+  return row * CELL_SIZE + CELL_SIZE / 2;
+}
 </script>
 
 <style scoped>
-.chess-board-container {
-  position: relative;
+.chess-board {
   display: flex;
+  gap: 20px;
+  padding: 20px;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
 }
 
-.board-frame {
-  background: linear-gradient(135deg, #d4a574 0%, #c49a6c 50%, #b8956a 100%);
-  border: 4px solid #5d4037;
-  border-radius: 4px;
-  padding: 6px;
-  box-shadow: 
-    0 4px 16px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+.board-container {
+  background: #f0d9b5;
+  border: 3px solid #8b4513;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.board-wrapper {
+  position: relative;
 }
 
 .board {
   display: flex;
   flex-direction: column;
-  background: #f5deb3;
-  border: 2px solid #5d4037;
+  gap: 0;
 }
 
 .board-row {
   display: flex;
+  height: 50px;
 }
 
 .cell {
-  width: 36px;
-  height: 36px;
+  width: 50px;
+  height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   position: relative;
-  border: 1px solid #8b7355;
-  background: #f5deb3;
-  transition: background 0.15s ease;
-}
-
-/* 响应式尺寸 */
-@media (min-width: 360px) {
-  .cell { width: 38px; height: 38px; }
-}
-
-@media (min-width: 400px) {
-  .cell { width: 42px; height: 42px; }
-}
-
-@media (min-width: 450px) {
-  .cell { width: 46px; height: 46px; }
+  border: 1px solid #d4a574;
+  background: #f0d9b5;
 }
 
 .cell:hover {
-  background: #e8d4a8;
-}
-
-/* 炮位和兵站标记 */
-.pos-mark {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.cannon-mark::before,
-.cannon-mark::after,
-.pawn-mark::before,
-.pawn-mark::after {
-  content: '';
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-color: #5d4037;
-  border-style: solid;
-}
-
-/* 炮位标记 - L形 */
-.cannon-mark::before {
-  top: 6px;
-  left: 6px;
-  border-width: 1px 0 0 1px;
-}
-
-.cannon-mark::after {
-  top: 6px;
-  right: 6px;
-  border-width: 1px 1px 0 0;
-}
-
-/* 兵站标记 - ⊥形 */
-.pawn-mark::before {
-  bottom: 6px;
-  left: 6px;
-  border-width: 0 0 1px 1px;
-}
-
-.pawn-mark::after {
-  bottom: 6px;
-  right: 6px;
-  border-width: 0 1px 1px 0;
+  background: #e8c99b;
 }
 
 .cell.selected {
-  background: #ffeb3b !important;
-  box-shadow: inset 0 0 8px rgba(255, 193, 7, 0.8);
+  background: #ffff00 !important;
 }
 
 .cell.valid-move {
-  background: rgba(144, 238, 144, 0.5) !important;
-}
-
-.cell.hint-from::before {
-  content: '';
-  position: absolute;
-  width: 0;
-  height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 12px solid #2196F3;
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 5;
-  animation: hint-pulse 1s infinite;
-}
-
-.cell.hint-to::before {
-  content: '';
-  position: absolute;
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 14px solid #1976D2;
-  bottom: -7px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 5;
-  animation: hint-pulse 1s infinite;
-}
-
-@keyframes hint-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  background: #90ee90 !important;
 }
 
 .cell.valid-move::after {
@@ -322,127 +206,123 @@ onMounted(async () => {
   position: absolute;
   width: 12px;
   height: 12px;
-  background: rgba(76, 175, 80, 0.6);
+  background: rgba(0, 128, 0, 0.5);
   border-radius: 50%;
-}
-
-.cell.highlight-from {
-  background: rgba(255, 193, 7, 0.4) !important;
-}
-
-.cell.highlight-to {
-  background: rgba(255, 152, 0, 0.4) !important;
 }
 
 .piece {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
+  font-size: 32px;
   font-weight: bold;
-  user-select: none;
-  box-shadow: 
-    2px 2px 4px rgba(0, 0, 0, 0.3),
-    inset 0 1px 2px rgba(255, 255, 255, 0.3);
-  border: 2px solid;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
 }
 
-@media (min-width: 360px) {
-  .piece { width: 34px; height: 34px; font-size: 19px; }
+.red-piece .piece {
+  color: #cc0000;
 }
 
-@media (min-width: 400px) {
-  .piece { width: 38px; height: 38px; font-size: 21px; }
+.black-piece .piece {
+  color: #000000;
 }
 
-@media (min-width: 450px) {
-  .piece { width: 42px; height: 42px; font-size: 23px; }
-}
-
-@media (min-width: 380px) { .piece { font-size: 32px; } }
-@media (min-width: 450px) { .piece { font-size: 36px; } }
-@media (min-width: 550px) { .piece { font-size: 40px; } }
-
-.piece.red {
-  background: linear-gradient(145deg, #fff5f5, #ffe0e0);
-  color: #c62828;
-  border-color: #c62828;
-}
-
-.piece.black {
-  background: linear-gradient(145deg, #f5f5f5, #e0e0e0);
-  color: #212121;
-  border-color: #212121;
-}
-
-/* 翻转时棋子保持正向 */
-.river {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 36px;
-  background: #f5deb3;
-  padding: 0 8px;
-}
-
-.river-left, .river-right {
-  font-size: 14px;
-  font-weight: bold;
-  color: #5d4037;
-  letter-spacing: 4px;
-  font-family: 'KaiTi', 'STKaiti', serif;
-}
-
-.river-left {
-  /* 楚河在左边 */
-}
-
-.river-right {
-  /* 汉界在右边 */
-}
-
-/* 游戏结束遮罩 */
-.game-over-overlay {
+/* 箭头覆盖层 */
+.arrows-overlay {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  border-radius: 8px;
+  width: 450px;
+  height: 500px;
+  pointer-events: none;
+  z-index: 10;
 }
 
-.game-over-content {
+.arrow-line {
+  opacity: 0.8;
+  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+.river {
   text-align: center;
-  color: white;
-}
-
-.winner-text {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: bold;
-  margin-bottom: 20px;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  color: #8b4513;
+  padding: 10px;
+  letter-spacing: 20px;
 }
 
-.restart-btn {
-  padding: 12px 32px;
-  font-size: 18px;
-  border: none;
+.info-panel {
+  min-width: 250px;
+  padding: 20px;
+  background: #fff;
   border-radius: 8px;
-  background: #4CAF50;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.restart-btn:hover {
+.turn-indicator {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.engine-info {
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #e8f5e9;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.engine-info div {
+  margin: 5px 0;
+}
+
+.pv {
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.thinking {
+  color: #666;
+  font-style: italic;
+  margin-bottom: 15px;
+}
+
+.game-over {
+  font-size: 20px;
+  font-weight: bold;
+  color: #cc0000;
+  text-align: center;
+  padding: 15px;
+  background: #ffebee;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.controls button {
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  transition: background 0.3s;
+}
+
+.controls button:hover {
   background: #45a049;
-  transform: scale(1.05);
+}
+
+.controls button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
 </style>

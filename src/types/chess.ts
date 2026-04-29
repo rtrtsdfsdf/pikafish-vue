@@ -17,18 +17,24 @@ export interface Move {
   to: Position;
   piece: string;
   captured?: string;
-  notation?: string;
 }
 
 // 引擎分析结果
 export interface EngineInfo {
   depth: number;
   score?: number;
-  scoreType?: 'cp' | 'mate';  // 分数类型：centipawns 或 mate
+  mate?: number;
   nodes: number;
-  nps?: number;  // 每秒节点数（可选）
+  nps: number;
   pv: string[];
   time: number;
+}
+
+// 箭头（用于显示走法）
+export interface Arrow {
+  from: Position;
+  to: Position;
+  color: string; // 箭头颜色
 }
 
 // 游戏状态
@@ -42,9 +48,5 @@ export interface GameState {
   engineInfo: EngineInfo | null;
   gameOver: boolean;
   winner: 'red' | 'black' | null;
-  autoPlayMode: 'none' | 'red' | 'black' | 'both';
-  pendingAutoMove: boolean;
-  engineDepth: number;
-  logs: { time: string; message: string; }[];
-  hintMove: { from: Position; to: Position } | null;
+  arrows: Arrow[]; // 显示的箭头列表
 }
