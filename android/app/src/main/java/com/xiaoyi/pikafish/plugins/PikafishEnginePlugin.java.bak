@@ -77,11 +77,18 @@ public class PikafishEnginePlugin extends Plugin {
                     debug("NNUE model ready: " + nnueFile.getAbsolutePath());
                 }
                 
-                // 从 filesDir 查找引擎（nativeLibraryDir 写入受限）
+                // 尝试复制 NNUE 到 nativeLibraryDir（引擎可以读取）
+                File nnueInLibDir = copyNnueToNativeLibDir();
+                if (nnueInLibDir != null) {
+                    debug("NNUE copied to nativeLibraryDir: " + nnueInLibDir.getAbsolutePath());
+                    nnueFile = nnueInLibDir;  // 使用 nativeLibraryDir 中的 NNUE
+                }
+                
+                // 从 nativeLibraryDir 查找引擎（有正确的 SELinux 上下文）
                 String enginePath = findEngine();
                 
                 if (enginePath == null) {
-                    throw new RuntimeException("Engine not found");
+                    throw new RuntimeException("Engine not found in nativeLibraryDir");
                 }
                 
                 debug("Using engine: " + enginePath);
@@ -100,12 +107,6 @@ public class PikafishEnginePlugin extends Plugin {
                 debug("Setting PIKAFISH_LIB_DIR: " + nativeLibDir);
                 if (nnueFile != null) {
                     debug("NNUE file path: " + nnueFile.getAbsolutePath());
-                }
-                
-                // 从 assets 复制引擎到 filesDir（避免 nativeDir 权限问题）
-                File engineFile = copyEngineToFilesDir();
-                if (engineFile != null) {
-                    debug("Engine copied to filesDir: " + engineFile.getAbsolutePath());
                 }
                 
                 debug("Executing: " + enginePath);
@@ -306,18 +307,11 @@ public class PikafishEnginePlugin extends Plugin {
      * 查找引擎文件
      */
     private String findEngine() {
-        // 优先检查 filesDir/engine/pikafish（可读写，无 SELinux 限制）
-        File filesEngine = new File(engineWorkDir, "pikafish");
-        if (filesEngine.exists() && filesEngine.canExecute()) {
-            debug("FOUND in filesDir: " + filesEngine.getAbsolutePath());
-            return filesEngine.getAbsolutePath();
-        }
-        
-        // 从 nativeLibraryDir 查找
+        // 优先从 nativeLibraryDir 查找（有正确的 SELinux 上下文）
         String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
         debug("nativeLibraryDir: " + nativeLibDir);
         
-        // 直接检查 nativeLibraryDir
+        // 方法1：直接检查 nativeLibraryDir
         File libDir = new File(nativeLibDir);
         if (libDir.exists() && libDir.isDirectory()) {
             File[] files = libDir.listFiles();
@@ -325,6 +319,7 @@ public class PikafishEnginePlugin extends Plugin {
             if (files != null) {
                 for (File f : files) {
                     debug("  " + f.getName() + " exists:" + f.exists() + " canRead:" + f.canRead() + " canExecute:" + f.canExecute());
+                    // 检查 libpikafish.so（不要求 canExecute，因为 .so 文件可能没有执行权限）
                     if (f.getName().equals("libpikafish.so") && f.exists()) {
                         debug("FOUND in nativeLibraryDir: " + f.getAbsolutePath());
                         return f.getAbsolutePath();
@@ -333,7 +328,7 @@ public class PikafishEnginePlugin extends Plugin {
             }
         }
         
-        // 检查父目录的其他 ABI
+        // 方法2：检查父目录的其他 ABI
         File parentDir = libDir.getParentFile();
         if (parentDir != null && parentDir.exists()) {
             File[] subdirs = parentDir.listFiles();
@@ -348,7 +343,7 @@ public class PikafishEnginePlugin extends Plugin {
             }
         }
         
-        debug("Engine not found in filesDir or nativeLibraryDir");
+        debug("Engine not found in nativeLibraryDir");
         return null;
     }
     
