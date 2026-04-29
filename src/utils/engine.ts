@@ -6,6 +6,14 @@ let engineWorker: Worker | null = null;
 let messageCallback: ((msg: string) => void) | null = null;
 let isReady = false;
 
+// 获取引擎文件的基础 URL
+function getEngineBaseUrl(): string {
+  // 在 Web 环境中使用相对路径
+  // 在 Capacitor/Android 中使用特殊路径
+  const base = window.location.origin;
+  return `${base}/engine`;
+}
+
 // 初始化引擎
 export async function initEngine(onMessage: (msg: string) => void): Promise<void> {
   if (engineWorker) {
@@ -15,6 +23,9 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
 
   messageCallback = onMessage;
   logger.info('[Engine] Starting initialization...');
+  
+  const engineBaseUrl = getEngineBaseUrl();
+  logger.info('[Engine] Base URL:', engineBaseUrl);
 
   // 创建 Worker 来加载 WASM
   const workerCode = `
@@ -29,12 +40,15 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
       
       if (type === 'init') {
         try {
+          const baseUrl = data.baseUrl;
+          console.log('[Worker] Using base URL:', baseUrl);
+          
           // 动态导入 pikafish.js
-          importScripts('/engine/pikafish.js');
+          importScripts(baseUrl + '/pikafish.js');
           console.log('[Worker] pikafish.js loaded');
           
           const PikafishModule = await Pikafish({
-            locateFile: (path) => '/engine/' + path
+            locateFile: (path) => baseUrl + '/' + path
           });
           
           pikafish = PikafishModule;
@@ -109,7 +123,7 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
     };
     
     // 初始化引擎
-    engineWorker.postMessage({ type: 'init' });
+    engineWorker.postMessage({ type: 'init', data: { baseUrl: engineBaseUrl } });
   });
 }
 
