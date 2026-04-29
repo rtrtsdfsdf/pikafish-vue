@@ -131,7 +131,7 @@ defineEmits<{
   goEnd: []
 }>()
 
-const isCollapsed = ref(false)
+const isCollapsed = ref(true) // 默认折叠
 const activeTab = ref('engine')
 
 const tabs = [
@@ -354,8 +354,8 @@ const rounds = computed(() => {
 }
 
 .nav-btn {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.1);
@@ -380,7 +380,7 @@ const rounds = computed(() => {
   display: flex;
   justify-content: center;
   gap: 24px;
-  padding: 8px;
+  padding: 6px;
   background: rgba(0, 0, 0, 0.3);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -390,12 +390,12 @@ const rounds = computed(() => {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: #f5deb3;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   transition: all 0.2s;
 }

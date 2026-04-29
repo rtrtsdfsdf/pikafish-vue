@@ -89,10 +89,11 @@ defineEmits<{
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 4px 8px;
   background: linear-gradient(180deg, #8B4513 0%, #654321 100%);
   border-bottom: 2px solid #3d2914;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  min-height: 44px;
 }
 
 .toolbar-left,
@@ -110,13 +111,13 @@ defineEmits<{
 .player-badge {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
-  border-radius: 16px;
+  gap: 3px;
+  padding: 4px 8px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.1);
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 2px solid transparent;
+  border: 1px solid transparent;
 }
 
 .player-badge:hover {
@@ -173,10 +174,10 @@ defineEmits<{
 }
 
 .toolbar-btn {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.1);
   color: #f5deb3;
   cursor: pointer;

@@ -29,7 +29,7 @@
         </div>
         
         <!-- 箭头 SVG 覆盖层 -->
-        <svg class="arrows-overlay" viewBox="0 0 360 400">
+        <svg class="arrows-overlay" :viewBox="svgViewBox">
           <defs>
             <!-- 为每种颜色创建箭头标记 -->
             <marker 
@@ -87,17 +87,48 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref, computed, onUnmounted } from 'vue';
 import { useChessStore } from '@/stores/chess';
 import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic';
 
 const store = useChessStore();
 
-// 棋盘尺寸常量
-const CELL_SIZE = 40; // 每格 40px（适配手机屏幕）
+// 动态计算格子大小
+const cellSize = ref(40);
+
+function updateCellSize() {
+  // 计算可用空间
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // 预留工具栏和底部面板的空间
+  const toolbarHeight = 50; // 工具栏高度
+  const bottomPanelHeight = 60; // 底部面板折叠时高度
+  const padding = 20; // 边距
+
+  // 计算可用宽度和高度
+  const availableWidth = vw - padding;
+  const availableHeight = vh - toolbarHeight - bottomPanelHeight - padding;
+
+  // 棋盘是 9 列 10 行
+  const cellByWidth = availableWidth / 9;
+  const cellByHeight = availableHeight / 10;
+
+  // 取较小值，确保棋盘完整显示
+  cellSize.value = Math.floor(Math.min(cellByWidth, cellByHeight));
+
+  // 限制最小和最大值
+  cellSize.value = Math.max(30, Math.min(50, cellSize.value));
+}
 
 onMounted(async () => {
+  updateCellSize();
+  window.addEventListener('resize', updateCellSize);
   await store.initGameEngine();
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateCellSize);
 });
 
 function getPieceName(piece: string): string {
@@ -118,12 +149,12 @@ function handleCellClick(row: number, col: number) {
 
 // 计算箭头的 X 坐标（格子中心）
 function getArrowX(col: number): number {
-  return col * CELL_SIZE + CELL_SIZE / 2;
+  return col * cellSize.value + cellSize.value / 2;
 }
 
 // 计算箭头的 Y 坐标（格子中心）
 function getArrowY(row: number): number {
-  return row * CELL_SIZE + CELL_SIZE / 2;
+  return row * cellSize.value + cellSize.value / 2;
 }
 
 // 根据颜色获取箭头标记 ID
@@ -135,29 +166,34 @@ function getMarkerId(color: string): string {
   };
   return colorMap[color] || 'url(#arrowhead-yellow)';
 }
+
+// 计算 SVG viewBox
+const svgViewBox = computed(() => {
+  const width = 9 * cellSize.value;
+  const height = 10 * cellSize.value;
+  return `0 0 ${width} ${height}`;
+});
 </script>
 
 <style scoped>
 .chess-board {
-  width: 100vw;
-  min-height: 100vh;
+  /* 棋盘容器自适应 */
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 0;
-  margin: 0;
-  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
 }
 
 .board-container {
   background: #f0d9b5;
   border: 2px solid #8b4513;
   border-radius: 4px;
-  padding: 5px;
+  padding: 4px;
   box-sizing: border-box;
-  max-width: calc(100vw - 10px);
-  overflow: hidden;
+  /* 使用 vmin 确保在小屏幕上也能完整显示 */
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
 }
 
 .board-wrapper {
@@ -173,12 +209,16 @@ function getMarkerId(color: string): string {
 
 .board-row {
   display: flex;
-  height: 40px;
+  /* 使用 calc 动态计算格子大小 */
+  height: calc((100vw - 24px) / 9);
+  max-height: calc((100vh - 200px) / 10);
 }
 
 .cell {
-  width: 40px;
-  height: 40px;
+  /* 使用 calc 动态计算格子大小 */
+  width: calc((100vw - 24px) / 9);
+  max-width: calc((100vh - 200px) / 10);
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -204,14 +244,17 @@ function getMarkerId(color: string): string {
 .cell.valid-move::after {
   content: '';
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: 20%;
+  height: 20%;
+  min-width: 8px;
+  min-height: 8px;
   background: rgba(0, 128, 0, 0.5);
   border-radius: 50%;
 }
 
 .piece {
-  font-size: 26px;
+  /* 棋子大小随格子缩放 */
+  font-size: clamp(18px, 5.5vw, 32px);
   font-weight: bold;
   text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
 }
@@ -224,13 +267,13 @@ function getMarkerId(color: string): string {
   color: #000000;
 }
 
-/* 箭头覆盖层 */
+/* 箭头覆盖层 - 使用百分比 */
 .arrows-overlay {
   position: absolute;
   top: 0;
   left: 0;
-  width: 360px;
-  height: 400px;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 10;
 }
@@ -242,10 +285,10 @@ function getMarkerId(color: string): string {
 
 .river {
   text-align: center;
-  font-size: 18px;
+  font-size: clamp(14px, 4vw, 20px);
   font-weight: bold;
   color: #8b4513;
-  padding: 8px;
-  letter-spacing: 15px;
+  padding: clamp(4px, 1vw, 10px);
+  letter-spacing: clamp(8px, 3vw, 20px);
 }
 </style>
