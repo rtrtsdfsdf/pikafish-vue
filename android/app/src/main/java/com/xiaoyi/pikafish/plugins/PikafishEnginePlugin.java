@@ -308,32 +308,23 @@ public class PikafishEnginePlugin extends Plugin {
         String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
         debug("nativeLibraryDir: " + nativeLibDir);
 
-        // 检查 nativeLibraryDir
-        File libDir = new File(nativeLibDir);
-        if (libDir.exists() && libDir.isDirectory()) {
-            File[] files = libDir.listFiles();
-            debug("nativeLibraryDir files: " + (files != null ? files.length : 0));
-            if (files != null) {
-                for (File f : files) {
-                    debug("  " + f.getName() + " exists:" + f.exists() + " canRead:" + f.canRead() + " canExecute:" + f.canExecute());
-                    if (f.getName().equals("libpikafish.so") && f.exists() && f.canExecute()) {
-                        debug("FOUND in nativeLibraryDir: " + f.getAbsolutePath());
-                        return f.getAbsolutePath();
-                    }
-                }
-            }
+        // 直接构造路径（listFiles 在 Android 10+ 可能为空）
+        File engine = new File(nativeLibDir, "libpikafish.so");
+        if (engine.exists()) {
+            debug("FOUND in nativeLibraryDir: " + engine.getAbsolutePath());
+            return engine.getAbsolutePath();
         }
 
         // 检查父目录的其他 ABI
-        File parentDir = libDir.getParentFile();
+        File parentDir = new File(nativeLibDir).getParentFile();
         if (parentDir != null && parentDir.exists()) {
             File[] subdirs = parentDir.listFiles();
             if (subdirs != null) {
                 for (File subdir : subdirs) {
-                    File engine = new File(subdir, "libpikafish.so");
-                    if (engine.exists() && engine.canExecute()) {
-                        debug("FOUND in " + subdir.getName() + ": " + engine.getAbsolutePath());
-                        return engine.getAbsolutePath();
+                    File altEngine = new File(subdir, "libpikafish.so");
+                    if (altEngine.exists()) {
+                        debug("FOUND in " + subdir.getName() + ": " + altEngine.getAbsolutePath());
+                        return altEngine.getAbsolutePath();
                     }
                 }
             }
