@@ -1,163 +1,359 @@
 <template>
   <div class="chess-board">
-    <!-- 棋盘 -->
-    <div class="board-container">
-      <div class="board-wrapper">
-        <div class="board">
-          <div 
-            v-for="(row, rowIndex) in store.board" 
-            :key="rowIndex"
-            class="board-row"
-          >
-            <div
-              v-for="(piece, colIndex) in row"
-              :key="colIndex"
-              class="cell"
-              :class="{
-                'selected': isSelected(rowIndex, colIndex),
-                'valid-move': isValidMove(rowIndex, colIndex),
-                'red-piece': getPieceColor(piece) === 'red',
-                'black-piece': getPieceColor(piece) === 'black'
-              }"
-              @click="handleCellClick(rowIndex, colIndex)"
-            >
-              <span v-if="piece !== ' '" class="piece">
-                {{ getPieceName(piece) }}
-              </span>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 箭头 SVG 覆盖层 -->
-        <svg class="arrows-overlay" :viewBox="svgViewBox">
-          <defs>
-            <!-- 为每种颜色创建箭头标记 -->
-            <marker 
-              id="arrowhead-yellow" 
-              markerWidth="10" 
-              markerHeight="7" 
-              refX="9" 
-              refY="3.5" 
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#ffeb3b" />
-            </marker>
-            <marker 
-              id="arrowhead-orange" 
-              markerWidth="10" 
-              markerHeight="7" 
-              refX="9" 
-              refY="3.5" 
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#ff9800" />
-            </marker>
-            <marker 
-              id="arrowhead-green" 
-              markerWidth="10" 
-              markerHeight="7" 
-              refX="9" 
-              refY="3.5" 
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#4caf50" />
-            </marker>
-          </defs>
-          
-          <!-- 绘制每个箭头 -->
-          <line
-            v-for="(arrow, index) in store.arrows"
-            :key="index"
-            :x1="getArrowX(arrow.from.col)"
-            :y1="getArrowY(arrow.from.row)"
-            :x2="getArrowX(arrow.to.col)"
-            :y2="getArrowY(arrow.to.row)"
-            :stroke="arrow.color"
-            stroke-width="4"
-            :marker-end="getMarkerId(arrow.color)"
-            class="arrow-line"
-          />
-        </svg>
-      </div>
+    <div class="board-container" ref="boardContainer">
+      <canvas 
+        ref="boardCanvas" 
+        class="board-canvas"
+        @click="handleCanvasClick"
+        @touchstart="handleTouchStart"
+      ></canvas>
       
-      <!-- 楚河汉界 -->
-      <div class="river">楚河&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;汉界</div>
+      <!-- 箭头 SVG 覆盖层 -->
+      <svg class="arrows-overlay" :viewBox="svgViewBox">
+        <defs>
+          <marker id="arrowhead-yellow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#ffeb3b" />
+          </marker>
+          <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#ff9800" />
+          </marker>
+          <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#4caf50" />
+          </marker>
+        </defs>
+        
+        <line
+          v-for="(arrow, index) in store.arrows"
+          :key="index"
+          :x1="getArrowX(arrow.from.col)"
+          :y1="getArrowY(arrow.from.row)"
+          :x2="getArrowX(arrow.to.col)"
+          :y2="getArrowY(arrow.to.row)"
+          :stroke="arrow.color"
+          stroke-width="3"
+          :marker-end="getMarkerId(arrow.color)"
+          class="arrow-line"
+        />
+      </svg>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed, onUnmounted } from 'vue';
+import { onMounted, ref, computed, onUnmounted, watch, nextTick } from 'vue';
 import { useChessStore } from '@/stores/chess';
 import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic';
 
 const store = useChessStore();
 
-// 动态计算格子大小
-const cellSize = ref(40);
+const boardCanvas = ref<HTMLCanvasElement | null>(null);
+const boardContainer = ref<HTMLDivElement | null>(null);
 
-function updateCellSize() {
-  // 计算可用空间
+// 棋盘参数
+const cellSize = ref(40);
+const padding = ref(20); // 棋盘边距
+const canvasWidth = ref(400);
+const canvasHeight = ref(440);
+
+// 计算棋盘尺寸
+function calculateBoardSize() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-
-  // 预留工具栏和底部面板的空间
-  const toolbarHeight = 50; // 工具栏高度
-  const bottomPanelHeight = 60; // 底部面板折叠时高度
-  const padding = 20; // 边距
-
-  // 计算可用宽度和高度
-  const availableWidth = vw - padding;
-  const availableHeight = vh - toolbarHeight - bottomPanelHeight - padding;
-
-  // 棋盘是 9 列 10 行
-  const cellByWidth = availableWidth / 9;
-  const cellByHeight = availableHeight / 10;
-
-  // 取较小值，确保棋盘完整显示
+  
+  const toolbarHeight = 44;
+  const bottomPanelHeight = 50;
+  const margin = 16;
+  
+  const availableWidth = vw - margin;
+  const availableHeight = vh - toolbarHeight - bottomPanelHeight - margin;
+  
+  // 棋盘是 8 条竖线，9 条横线（10 行交叉点）
+  // 宽度 = 8 * cellSize, 高度 = 9 * cellSize + 楚河汉界
+  const cellByWidth = (availableWidth - 40) / 8; // 减去边距
+  const cellByHeight = (availableHeight - 60) / 9.5; // 楚河汉界占半格
+  
   cellSize.value = Math.floor(Math.min(cellByWidth, cellByHeight));
-
-  // 限制最小和最大值
-  cellSize.value = Math.max(30, Math.min(50, cellSize.value));
+  cellSize.value = Math.max(28, Math.min(45, cellSize.value));
+  
+  padding.value = Math.floor(cellSize.value * 0.5);
+  
+  // 画布尺寸
+  canvasWidth.value = 8 * cellSize.value + 2 * padding.value;
+  canvasHeight.value = 9 * cellSize.value + 2 * padding.value + Math.floor(cellSize.value * 0.5);
 }
 
-onMounted(async () => {
-  updateCellSize();
-  window.addEventListener('resize', updateCellSize);
-  await store.initGameEngine();
-});
-
-onUnmounted(() => {
-  window.removeEventListener('resize', updateCellSize);
-});
-
-function getPieceName(piece: string): string {
-  return PIECE_NAMES[piece] || '';
+// 绘制棋盘
+function drawBoard() {
+  const canvas = boardCanvas.value;
+  if (!canvas) return;
+  
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  
+  // 设置画布尺寸
+  canvas.width = canvasWidth.value;
+  canvas.height = canvasHeight.value;
+  
+  const cs = cellSize.value;
+  const p = padding.value;
+  
+  // 背景
+  ctx.fillStyle = '#f0d9b5';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // 绘制网格线
+  ctx.strokeStyle = '#8b4513';
+  ctx.lineWidth = 1;
+  
+  // 横线（10条）
+  for (let i = 0; i < 10; i++) {
+    ctx.beginPath();
+    ctx.moveTo(p, p + i * cs);
+    ctx.lineTo(p + 8 * cs, p + i * cs);
+    ctx.stroke();
+  }
+  
+  // 竖线（9条，中间楚河汉界断开）
+  for (let i = 0; i < 9; i++) {
+    // 上半部分
+    ctx.beginPath();
+    ctx.moveTo(p + i * cs, p);
+    ctx.lineTo(p + i * cs, p + 4 * cs);
+    ctx.stroke();
+    
+    // 下半部分
+    ctx.beginPath();
+    ctx.moveTo(p + i * cs, p + 5 * cs);
+    ctx.lineTo(p + i * cs, p + 9 * cs);
+    ctx.stroke();
+  }
+  
+  // 边框竖线（贯穿楚河汉界）
+  ctx.beginPath();
+  ctx.moveTo(p, p);
+  ctx.lineTo(p, p + 9 * cs);
+  ctx.stroke();
+  
+  ctx.beginPath();
+  ctx.moveTo(p + 8 * cs, p);
+  ctx.lineTo(p + 8 * cs, p + 9 * cs);
+  ctx.stroke();
+  
+  // 九宫格斜线
+  // 上方九宫
+  ctx.beginPath();
+  ctx.moveTo(p + 3 * cs, p);
+  ctx.lineTo(p + 5 * cs, p + 2 * cs);
+  ctx.stroke();
+  
+  ctx.beginPath();
+  ctx.moveTo(p + 5 * cs, p);
+  ctx.lineTo(p + 3 * cs, p + 2 * cs);
+  ctx.stroke();
+  
+  // 下方九宫
+  ctx.beginPath();
+  ctx.moveTo(p + 3 * cs, p + 7 * cs);
+  ctx.lineTo(p + 5 * cs, p + 9 * cs);
+  ctx.stroke();
+  
+  ctx.beginPath();
+  ctx.moveTo(p + 5 * cs, p + 7 * cs);
+  ctx.lineTo(p + 3 * cs, p + 9 * cs);
+  ctx.stroke();
+  
+  // 绘制炮和兵的位置标记
+  drawPositionMarks(ctx, cs, p);
+  
+  // 楚河汉界
+  ctx.font = `bold ${Math.floor(cs * 0.5)}px serif`;
+  ctx.fillStyle = '#8b4513';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  const riverY = p + 4.5 * cs;
+  ctx.fillText('楚 河', p + 2 * cs, riverY);
+  ctx.fillText('汉 界', p + 6 * cs, riverY);
+  
+  // 绘制棋子
+  drawPieces(ctx, cs, p);
+  
+  // 绘制选中状态和有效走法
+  drawSelection(ctx, cs, p);
 }
 
-function isSelected(row: number, col: number): boolean {
-  return store.selectedPos?.row === row && store.selectedPos?.col === col;
+// 绘制位置标记（炮和兵的位置）
+function drawPositionMarks(ctx: CanvasRenderingContext2D, cs: number, p: number) {
+  const markSize = cs * 0.15;
+  const offset = cs * 0.08;
+  
+  // 需要标记的位置
+  const positions = [
+    // 炮的位置
+    [1, 2], [7, 2], [1, 7], [7, 7],
+    // 兵/卒的位置
+    [0, 3], [2, 3], [4, 3], [6, 3], [8, 3],
+    [0, 6], [2, 6], [4, 6], [6, 6], [8, 6]
+  ];
+  
+  positions.forEach(([col, row]) => {
+    const x = p + col * cs;
+    const y = p + row * cs;
+    
+    // 四个角的标记
+    const corners = [
+      { dx: -offset, dy: -offset, sx: -1, sy: -1 }, // 左上
+      { dx: offset, dy: -offset, sx: 1, sy: -1 },   // 右上
+      { dx: -offset, dy: offset, sx: -1, sy: 1 },   // 左下
+      { dx: offset, dy: offset, sx: 1, sy: 1 }      // 右下
+    ];
+    
+    corners.forEach(({ dx, dy, sx, sy }) => {
+      // 检查是否在棋盘边缘
+      if ((col === 0 && sx === -1) || (col === 8 && sx === 1)) return;
+      
+      ctx.beginPath();
+      ctx.moveTo(x + dx, y + dy);
+      ctx.lineTo(x + dx, y + dy + sy * markSize);
+      ctx.moveTo(x + dx, y + dy);
+      ctx.lineTo(x + dx + sx * markSize, y + dy);
+      ctx.stroke();
+    });
+  });
 }
 
-function isValidMove(row: number, col: number): boolean {
-  return store.validMoves.some(m => m.row === row && m.col === col);
+// 绘制棋子
+function drawPieces(ctx: CanvasRenderingContext2D, cs: number, p: number) {
+  const radius = cs * 0.42;
+  
+  for (let row = 0; row < 10; row++) {
+    for (let col = 0; col < 9; col++) {
+      const piece = store.board[row][col];
+      if (piece === ' ') continue;
+      
+      const x = p + col * cs;
+      const y = p + row * cs;
+      const color = getPieceColor(piece);
+      const isRed = color === 'red';
+      
+      // 棋子底色
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff8dc';
+      ctx.fill();
+      
+      // 棋子边框
+      ctx.strokeStyle = isRed ? '#cc0000' : '#000000';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // 内圈
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 0.85, 0, Math.PI * 2);
+      ctx.strokeStyle = isRed ? '#cc0000' : '#000000';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      // 棋子文字
+      ctx.font = `bold ${Math.floor(cs * 0.5)}px "KaiTi", "STKaiti", serif`;
+      ctx.fillStyle = isRed ? '#cc0000' : '#000000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(PIECE_NAMES[piece] || '', x, y);
+    }
+  }
 }
 
-function handleCellClick(row: number, col: number) {
-  store.selectPiece({ row, col });
+// 绘制选中状态和有效走法
+function drawSelection(ctx: CanvasRenderingContext2D, cs: number, p: number) {
+  // 选中棋子
+  if (store.selectedPos) {
+    const x = p + store.selectedPos.col * cs;
+    const y = p + store.selectedPos.row * cs;
+    const radius = cs * 0.48;
+    
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffff00';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+  
+  // 有效走法
+  store.validMoves.forEach(move => {
+    const x = p + move.col * cs;
+    const y = p + move.row * cs;
+    const radius = cs * 0.15;
+    
+    // 如果目标位置有棋子，画圆圈
+    if (store.board[move.row][move.col] !== ' ') {
+      ctx.beginPath();
+      ctx.arc(x, y, cs * 0.42, 0, Math.PI * 2);
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    } else {
+      // 否则画小圆点
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+      ctx.fill();
+    }
+  });
 }
 
-// 计算箭头的 X 坐标（格子中心）
+// 处理点击
+function handleCanvasClick(event: MouseEvent) {
+  const pos = getPositionFromEvent(event);
+  if (pos) {
+    store.selectPiece(pos);
+  }
+}
+
+function handleTouchStart(event: TouchEvent) {
+  event.preventDefault();
+  const touch = event.touches[0];
+  if (touch) {
+    const pos = getPositionFromEvent(touch as any);
+    if (pos) {
+      store.selectPiece(pos);
+    }
+  }
+}
+
+function getPositionFromEvent(event: { clientX: number; clientY: number }): { row: number; col: number } | null {
+  const canvas = boardCanvas.value;
+  if (!canvas) return null;
+  
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  const x = (event.clientX - rect.left) * scaleX;
+  const y = (event.clientY - rect.top) * scaleY;
+  
+  const cs = cellSize.value;
+  const p = padding.value;
+  
+  const col = Math.round((x - p) / cs);
+  const row = Math.round((y - p) / cs);
+  
+  if (col >= 0 && col < 9 && row >= 0 && row < 10) {
+    return { row, col };
+  }
+  
+  return null;
+}
+
+// 箭头相关
 function getArrowX(col: number): number {
-  return col * cellSize.value + cellSize.value / 2;
+  return padding.value + col * cellSize.value;
 }
 
-// 计算箭头的 Y 坐标（格子中心）
 function getArrowY(row: number): number {
-  return row * cellSize.value + cellSize.value / 2;
+  return padding.value + row * cellSize.value;
 }
 
-// 根据颜色获取箭头标记 ID
 function getMarkerId(color: string): string {
   const colorMap: Record<string, string> = {
     '#ffeb3b': 'url(#arrowhead-yellow)',
@@ -167,17 +363,39 @@ function getMarkerId(color: string): string {
   return colorMap[color] || 'url(#arrowhead-yellow)';
 }
 
-// 计算 SVG viewBox
 const svgViewBox = computed(() => {
-  const width = 9 * cellSize.value;
-  const height = 10 * cellSize.value;
-  return `0 0 ${width} ${height}`;
+  return `0 0 ${canvasWidth.value} ${canvasHeight.value}`;
+});
+
+// 监听棋盘变化重绘
+watch(() => store.board, () => {
+  nextTick(drawBoard);
+}, { deep: true });
+
+watch(() => store.selectedPos, drawBoard);
+watch(() => store.validMoves, drawBoard, { deep: true });
+watch(() => store.arrows, drawBoard, { deep: true });
+
+// 窗口大小变化
+function handleResize() {
+  calculateBoardSize();
+  nextTick(drawBoard);
+}
+
+onMounted(async () => {
+  calculateBoardSize();
+  window.addEventListener('resize', handleResize);
+  await store.initGameEngine();
+  nextTick(drawBoard);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
 });
 </script>
 
 <style scoped>
 .chess-board {
-  /* 棋盘容器自适应 */
   display: flex;
   justify-content: center;
   align-items: center;
@@ -186,88 +404,18 @@ const svgViewBox = computed(() => {
 }
 
 .board-container {
+  position: relative;
   background: #f0d9b5;
   border: 2px solid #8b4513;
   border-radius: 4px;
-  padding: 4px;
-  box-sizing: border-box;
-  /* 使用 vmin 确保在小屏幕上也能完整显示 */
-  max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.board-wrapper {
-  position: relative;
-  width: fit-content;
+.board-canvas {
+  display: block;
+  touch-action: none;
 }
 
-.board {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.board-row {
-  display: flex;
-  /* 使用 calc 动态计算格子大小 */
-  height: calc((100vw - 24px) / 9);
-  max-height: calc((100vh - 200px) / 10);
-}
-
-.cell {
-  /* 使用 calc 动态计算格子大小 */
-  width: calc((100vw - 24px) / 9);
-  max-width: calc((100vh - 200px) / 10);
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: relative;
-  border: 1px solid #d4a574;
-  background: #f0d9b5;
-  box-sizing: border-box;
-}
-
-.cell:hover {
-  background: #e8c99b;
-}
-
-.cell.selected {
-  background: #ffff00 !important;
-}
-
-.cell.valid-move {
-  background: #90ee90 !important;
-}
-
-.cell.valid-move::after {
-  content: '';
-  position: absolute;
-  width: 20%;
-  height: 20%;
-  min-width: 8px;
-  min-height: 8px;
-  background: rgba(0, 128, 0, 0.5);
-  border-radius: 50%;
-}
-
-.piece {
-  /* 棋子大小随格子缩放 */
-  font-size: clamp(18px, 5.5vw, 32px);
-  font-weight: bold;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-}
-
-.red-piece .piece {
-  color: #cc0000;
-}
-
-.black-piece .piece {
-  color: #000000;
-}
-
-/* 箭头覆盖层 - 使用百分比 */
 .arrows-overlay {
   position: absolute;
   top: 0;
@@ -279,16 +427,7 @@ const svgViewBox = computed(() => {
 }
 
 .arrow-line {
-  opacity: 0.8;
-  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.5));
-}
-
-.river {
-  text-align: center;
-  font-size: clamp(14px, 4vw, 20px);
-  font-weight: bold;
-  color: #8b4513;
-  padding: clamp(4px, 1vw, 10px);
-  letter-spacing: clamp(8px, 3vw, 20px);
+  opacity: 0.85;
+  filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.6));
 }
 </style>
