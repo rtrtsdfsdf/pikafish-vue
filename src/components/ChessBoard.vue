@@ -29,7 +29,7 @@
         </div>
         
         <!-- 箭头 SVG 覆盖层 -->
-        <svg class="arrows-overlay" viewBox="0 0 450 500">
+        <svg class="arrows-overlay" viewBox="0 0 360 400">
           <defs>
             <!-- 为每种颜色创建箭头标记 -->
             <marker 
@@ -94,7 +94,7 @@ import { PIECE_NAMES, getPieceColor } from '@/utils/chessLogic';
 const store = useChessStore();
 
 // 棋盘尺寸常量
-const CELL_SIZE = 50; // 每格 50px
+const CELL_SIZE = 40; // 每格 40px（适配手机屏幕）
 
 onMounted(async () => {
   await store.initGameEngine();
@@ -139,22 +139,30 @@ function getMarkerId(color: string): string {
 
 <style scoped>
 .chess-board {
+  width: 100vw;
+  min-height: 100vh;
   display: flex;
-  gap: 20px;
-  padding: 20px;
+  flex-direction: column;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .board-container {
   background: #f0d9b5;
-  border: 3px solid #8b4513;
-  border-radius: 8px;
-  padding: 10px;
+  border: 2px solid #8b4513;
+  border-radius: 4px;
+  padding: 5px;
+  box-sizing: border-box;
+  max-width: calc(100vw - 10px);
+  overflow: hidden;
 }
 
 .board-wrapper {
   position: relative;
+  width: fit-content;
 }
 
 .board {
@@ -165,12 +173,12 @@ function getMarkerId(color: string): string {
 
 .board-row {
   display: flex;
-  height: 50px;
+  height: 40px;
 }
 
 .cell {
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,6 +186,7 @@ function getMarkerId(color: string): string {
   position: relative;
   border: 1px solid #d4a574;
   background: #f0d9b5;
+  box-sizing: border-box;
 }
 
 .cell:hover {
@@ -195,14 +204,14 @@ function getMarkerId(color: string): string {
 .cell.valid-move::after {
   content: '';
   position: absolute;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   background: rgba(0, 128, 0, 0.5);
   border-radius: 50%;
 }
 
 .piece {
-  font-size: 32px;
+  font-size: 26px;
   font-weight: bold;
   text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
 }
@@ -220,8 +229,8 @@ function getMarkerId(color: string): string {
   position: absolute;
   top: 0;
   left: 0;
-  width: 450px;
-  height: 500px;
+  width: 360px;
+  height: 400px;
   pointer-events: none;
   z-index: 10;
 }
@@ -233,10 +242,10 @@ function getMarkerId(color: string): string {
 
 .river {
   text-align: center;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: bold;
   color: #8b4513;
-  padding: 10px;
-  letter-spacing: 20px;
+  padding: 8px;
+  letter-spacing: 15px;
 }
 </style>
