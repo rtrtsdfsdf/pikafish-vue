@@ -31,16 +31,36 @@
         <!-- 箭头 SVG 覆盖层 -->
         <svg class="arrows-overlay" viewBox="0 0 450 500">
           <defs>
-            <!-- 箭头标记 -->
+            <!-- 为每种颜色创建箭头标记 -->
             <marker 
-              id="arrowhead" 
+              id="arrowhead-yellow" 
               markerWidth="10" 
               markerHeight="7" 
               refX="9" 
               refY="3.5" 
               orient="auto"
             >
-              <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" />
+              <polygon points="0 0, 10 3.5, 0 7" fill="#ffeb3b" />
+            </marker>
+            <marker 
+              id="arrowhead-orange" 
+              markerWidth="10" 
+              markerHeight="7" 
+              refX="9" 
+              refY="3.5" 
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#ff9800" />
+            </marker>
+            <marker 
+              id="arrowhead-green" 
+              markerWidth="10" 
+              markerHeight="7" 
+              refX="9" 
+              refY="3.5" 
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#4caf50" />
             </marker>
           </defs>
           
@@ -54,7 +74,7 @@
             :y2="getArrowY(arrow.to.row)"
             :stroke="arrow.color"
             stroke-width="4"
-            marker-end="url(#arrowhead)"
+            :marker-end="getMarkerId(arrow.color)"
             class="arrow-line"
           />
         </svg>
@@ -143,6 +163,16 @@ function getArrowX(col: number): number {
 // 计算箭头的 Y 坐标（格子中心）
 function getArrowY(row: number): number {
   return row * CELL_SIZE + CELL_SIZE / 2;
+}
+
+// 根据颜色获取箭头标记 ID
+function getMarkerId(color: string): string {
+  const colorMap: Record<string, string> = {
+    '#ffeb3b': 'url(#arrowhead-yellow)',
+    '#ff9800': 'url(#arrowhead-orange)',
+    '#4caf50': 'url(#arrowhead-green)',
+  };
+  return colorMap[color] || 'url(#arrowhead-yellow)';
 }
 </script>
 
