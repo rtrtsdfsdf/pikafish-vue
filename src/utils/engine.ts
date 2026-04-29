@@ -148,11 +148,8 @@ function parseInfoLine(line: string): any {
   
   const scoreMatch = line.match(/score\s+(cp|mate)\s+(-?\d+)/);
   if (scoreMatch) {
-    if (scoreMatch[1] === 'cp') {
-      result.score = parseInt(scoreMatch[2] || '0');
-    } else {
-      result.mate = parseInt(scoreMatch[2] || '0');
-    }
+    result.scoreType = scoreMatch[1]; // 'cp' or 'mate'
+    result.score = parseInt(scoreMatch[2] || '0');
   }
   
   const nodesMatch = line.match(/nodes\s+(\d+)/);

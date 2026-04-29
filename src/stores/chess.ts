@@ -43,10 +43,12 @@ export const useChessStore = defineStore('chess', {
 
     // 处理引擎消息
     handleEngineMessage(line: string) {
+      console.log('[Engine]', line); // 调试日志
       const parsed = parseEngineLine(line);
       
       if (parsed.type === 'info') {
         this.engineInfo = parsed.data as EngineInfo;
+        console.log('[Engine Info]', this.engineInfo); // 调试日志
         
         // 根据 PV 更新箭头
         if (this.engineInfo.pv && this.engineInfo.pv.length > 0) {
@@ -56,7 +58,8 @@ export const useChessStore = defineStore('chess', {
         this.engineThinking = false;
         
         // 如果是 AI 模式，自动执行走法
-        const bestMove = (parsed.data as any)?.move;
+        const bestMove = parsed.data;
+        console.log('[BestMove]', bestMove); // 调试日志
         if (bestMove && this.shouldAutoPlay()) {
           this.executeEngineMove(bestMove);
         }
