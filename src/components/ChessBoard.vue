@@ -383,10 +383,22 @@ function handleResize() {
 }
 
 onMounted(async () => {
+  // 先计算尺寸并绘制棋盘
   calculateBoardSize();
+  
+  // 等待 DOM 更新
+  await nextTick();
+  
+  // 立即绘制棋盘
+  drawBoard();
+  
+  // 添加窗口大小变化监听
   window.addEventListener('resize', handleResize);
-  await store.initGameEngine();
-  nextTick(drawBoard);
+  
+  // 异步初始化引擎（不阻塞棋盘显示）
+  store.initGameEngine().catch(err => {
+    console.error('Engine init failed:', err);
+  });
 });
 
 onUnmounted(() => {
