@@ -78,13 +78,6 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 
                 // 从 filesDir 查找引擎（nativeLibraryDir 写入受限）
-// 从 assets 复制引擎到 filesDir（避免 nativeDir 权限问题）
-                File engineFile = copyEngineToFilesDir();
-                if (engineFile != null) {
-                    debug("Engine copied to filesDir: " + engineFile.getAbsolutePath());
-                }
-
-                
                 String enginePath = findEngine();
                 
                 if (enginePath == null) {
@@ -109,7 +102,12 @@ public class PikafishEnginePlugin extends Plugin {
                     debug("NNUE file path: " + nnueFile.getAbsolutePath());
                 }
                 
-                                
+                // 从 assets 复制引擎到 filesDir（避免 nativeDir 权限问题）
+                File engineFile = copyEngineToFilesDir();
+                if (engineFile != null) {
+                    debug("Engine copied to filesDir: " + engineFile.getAbsolutePath());
+                }
+                
                 debug("Executing: " + enginePath);
                 engineProcess = Runtime.getRuntime().exec(new String[]{enginePath}, envp, engineWorkDir);
                 
