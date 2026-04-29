@@ -13,6 +13,7 @@
       @toggle-black-a-i="toggleBlackAI"
       @flip-board="flipBoard"
       @settings="showSettings = true"
+      @show-log="showLog = true"
     />
     
     <!-- 主内容区 -->
@@ -62,6 +63,9 @@
         <button @click="showSettings = false">关闭</button>
       </div>
     </div>
+    
+    <!-- 日志面板 -->
+    <LogPanel :visible="showLog" @close="showLog = false" />
   </div>
 </template>
 
@@ -70,7 +74,12 @@ import { ref, computed, watch, onMounted } from 'vue'
 import ToolBar from './components/ToolBar.vue'
 import BottomPanel from './components/BottomPanel.vue'
 import ChessBoard from './components/ChessBoard.vue'
+import LogPanel from './components/LogPanel.vue'
 import { useChessStore } from '@/stores/chess'
+import { logger, setupGlobalLogging } from '@/utils/logger'
+
+// 启用全局日志
+setupGlobalLogging()
 
 const store = useChessStore()
 
@@ -78,6 +87,7 @@ const store = useChessStore()
 const chessBoardRef = ref<InstanceType<typeof ChessBoard> | null>(null)
 const showMenu = ref(false)
 const showSettings = ref(false)
+const showLog = ref(false)
 const isFlipped = ref(false)
 const engineDepth = ref(20)
 
