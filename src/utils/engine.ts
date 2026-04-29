@@ -2,47 +2,59 @@
 
 let engineWorker: Worker | null = null;
 let messageCallback: ((msg: string) => void) | null = null;
+let isReady = false;
 
 // 初始化引擎
 export async function initEngine(onMessage: (msg: string) => void): Promise<void> {
   if (engineWorker) {
+    console.log('[Engine] Already initialized');
     return;
   }
 
   messageCallback = onMessage;
+  console.log('[Engine] Starting initialization...');
 
   // 创建 Worker 来加载 WASM
   const workerCode = `
-    let pikafish: any = null;
+    let pikafish = null;
+    
+    console.log('[Worker] Starting...');
     
     // 监听主线程消息
     self.onmessage = async (e) => {
       const { type, data } = e.data;
+      console.log('[Worker] Received:', type, data);
       
       if (type === 'init') {
         try {
           // 动态导入 pikafish.js
           importScripts('/engine/pikafish.js');
+          console.log('[Worker] pikafish.js loaded');
           
-          // @ts-ignore
           const PikafishModule = await Pikafish({
-            locateFile: (path: string) => '/engine/' + path
+            locateFile: (path) => '/engine/' + path
           });
           
           pikafish = PikafishModule;
+          console.log('[Worker] Pikafish module ready');
           
           // 设置消息监听
-          pikafish.addMessageListener((line: string) => {
+          pikafish.addMessageListener((line) => {
+            console.log('[Worker] Engine output:', line);
             self.postMessage({ type: 'message', data: line });
           });
           
           self.postMessage({ type: 'ready' });
         } catch (err) {
+          console.error('[Worker] Error:', err);
           self.postMessage({ type: 'error', data: String(err) });
         }
       } else if (type === 'command') {
         if (pikafish) {
+          console.log('[Worker] Sending command:', data);
           pikafish.postMessage(data);
+        } else {
+          console.warn('[Worker] Engine not ready, ignoring command:', data);
         }
       }
     };
@@ -52,6 +64,7 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
   const workerUrl = URL.createObjectURL(blob);
   
   engineWorker = new Worker(workerUrl);
+  console.log('[Engine] Worker created');
   
   return new Promise((resolve, reject) => {
     if (!engineWorker) {
@@ -59,26 +72,37 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
       return;
     }
     
+    const timeout = setTimeout(() => {
+      reject(new Error('Engine initialization timeout'));
+    }, 30000);
+    
     engineWorker.onmessage = (e) => {
       const { type, data } = e.data;
+      console.log('[Engine] Worker message:', type, data);
       
       if (type === 'ready') {
+        clearTimeout(timeout);
+        isReady = true;
         // 发送 UCI 初始化命令
         sendCommand('uci');
         setTimeout(() => {
           sendCommand('isready');
+          console.log('[Engine] Initialization complete');
           resolve();
-        }, 100);
+        }, 500);
       } else if (type === 'message') {
         if (messageCallback) {
           messageCallback(data);
         }
       } else if (type === 'error') {
+        clearTimeout(timeout);
         reject(new Error(data));
       }
     };
     
     engineWorker.onerror = (err) => {
+      clearTimeout(timeout);
+      console.error('[Engine] Worker error:', err);
       reject(err);
     };
     
@@ -89,8 +113,15 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
 
 // 发送命令到引擎
 export function sendCommand(cmd: string): void {
-  if (engineWorker) {
+  if (engineWorker && isReady) {
+    console.log('[Engine] Sending command:', cmd);
     engineWorker.postMessage({ type: 'command', data: cmd });
+  } else if (!isReady) {
+    console.warn('[Engine] Engine not ready, queuing command:', cmd);
+    // 引擎未就绪时也发送，让队列处理
+    if (engineWorker) {
+      engineWorker.postMessage({ type: 'command', data: cmd });
+    }
   }
 }
 
