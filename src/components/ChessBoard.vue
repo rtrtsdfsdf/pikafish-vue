@@ -83,45 +83,6 @@
       <!-- 楚河汉界 -->
       <div class="river">楚河&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;汉界</div>
     </div>
-
-    <!-- 信息面板 -->
-    <div class="info-panel">
-      <div class="turn-indicator">
-        当前回合: {{ store.currentTurn === 'red' ? '红方' : '黑方' }}
-      </div>
-      
-      <!-- 引擎信息 -->
-      <div v-if="store.engineInfo" class="engine-info">
-        <div>深度: {{ store.engineInfo.depth }}</div>
-        <div v-if="store.engineInfo.score">
-          分数: {{ store.engineInfo.score > 0 ? '+' : '' }}{{ store.engineInfo.score / 100 }}
-        </div>
-        <div v-if="store.engineInfo.mate">
-          杀棋: {{ store.engineInfo.mate }} 步
-        </div>
-        <div v-if="store.engineInfo.pv" class="pv">
-          最佳走法: {{ store.engineInfo.pv.slice(0, 3).join(' ') }}
-        </div>
-      </div>
-      
-      <div v-if="store.engineThinking" class="thinking">
-        引擎分析中...
-      </div>
-      
-      <!-- 游戏结束 -->
-      <div v-if="store.gameOver" class="game-over">
-        游戏结束! {{ store.winner === 'red' ? '红方' : '黑方' }}获胜!
-      </div>
-      
-      <!-- 控制按钮 -->
-      <div class="controls">
-        <button @click="store.undoMove()" :disabled="store.history.length === 0">
-          悔棋
-        </button>
-        <button @click="store.resetGame()">重新开始</button>
-        <button @click="store.flipBoard()">翻转棋盘</button>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -277,82 +238,5 @@ function getMarkerId(color: string): string {
   color: #8b4513;
   padding: 10px;
   letter-spacing: 20px;
-}
-
-.info-panel {
-  min-width: 250px;
-  padding: 20px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.turn-indicator {
-  font-size: 18px;
-  font-weight: bold;
-  margin-bottom: 15px;
-  padding: 10px;
-  background: #f5f5f5;
-  border-radius: 4px;
-}
-
-.engine-info {
-  margin-bottom: 15px;
-  padding: 10px;
-  background: #e8f5e9;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.engine-info div {
-  margin: 5px 0;
-}
-
-.pv {
-  font-family: monospace;
-  word-break: break-all;
-}
-
-.thinking {
-  color: #666;
-  font-style: italic;
-  margin-bottom: 15px;
-}
-
-.game-over {
-  font-size: 20px;
-  font-weight: bold;
-  color: #cc0000;
-  text-align: center;
-  padding: 15px;
-  background: #ffebee;
-  border-radius: 4px;
-  margin-bottom: 15px;
-}
-
-.controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.controls button {
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-  background: #4caf50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  transition: background 0.3s;
-}
-
-.controls button:hover {
-  background: #45a049;
-}
-
-.controls button:disabled {
-  background: #ccc;
-  cursor: not-allowed;
 }
 </style>
