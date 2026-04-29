@@ -78,11 +78,7 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 
                 // 从 filesDir 查找引擎（nativeLibraryDir 写入受限）
-// 从 assets 复制引擎到 filesDir（避免 nativeDir 权限问题）
-                File engineFile = copyEngineToFilesDir();
-                if (engineFile != null) {
-                    debug("Engine copied to filesDir: " + engineFile.getAbsolutePath());
-                }
+                // 从 nativeLibraryDir 查找引擎（Android 管理 exec 权限）
 
                 
                 String enginePath = findEngine();
@@ -308,18 +304,11 @@ public class PikafishEnginePlugin extends Plugin {
      * 查找引擎文件
      */
     private String findEngine() {
-        // 优先检查 filesDir/engine/pikafish（可读写，无 SELinux 限制）
-        File filesEngine = new File(engineWorkDir, "pikafish");
-        if (filesEngine.exists() && filesEngine.canExecute()) {
-            debug("FOUND in filesDir: " + filesEngine.getAbsolutePath());
-            return filesEngine.getAbsolutePath();
-        }
-        
-        // 从 nativeLibraryDir 查找
+        // 从 nativeLibraryDir 查找引擎（Android 系统管理 exec 权限）
         String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
         debug("nativeLibraryDir: " + nativeLibDir);
-        
-        // 直接检查 nativeLibraryDir
+
+        // 检查 nativeLibraryDir
         File libDir = new File(nativeLibDir);
         if (libDir.exists() && libDir.isDirectory()) {
             File[] files = libDir.listFiles();
@@ -327,14 +316,14 @@ public class PikafishEnginePlugin extends Plugin {
             if (files != null) {
                 for (File f : files) {
                     debug("  " + f.getName() + " exists:" + f.exists() + " canRead:" + f.canRead() + " canExecute:" + f.canExecute());
-                    if (f.getName().equals("libpikafish.so") && f.exists()) {
+                    if (f.getName().equals("libpikafish.so") && f.exists() && f.canExecute()) {
                         debug("FOUND in nativeLibraryDir: " + f.getAbsolutePath());
                         return f.getAbsolutePath();
                     }
                 }
             }
         }
-        
+
         // 检查父目录的其他 ABI
         File parentDir = libDir.getParentFile();
         if (parentDir != null && parentDir.exists()) {
@@ -342,41 +331,15 @@ public class PikafishEnginePlugin extends Plugin {
             if (subdirs != null) {
                 for (File subdir : subdirs) {
                     File engine = new File(subdir, "libpikafish.so");
-                    if (engine.exists()) {
+                    if (engine.exists() && engine.canExecute()) {
                         debug("FOUND in " + subdir.getName() + ": " + engine.getAbsolutePath());
                         return engine.getAbsolutePath();
                     }
                 }
             }
         }
-        
-        debug("Engine not found in filesDir or nativeLibraryDir");
-        return null;
-    }
-    
-    /**
-     * 在 nativeLibraryDir 中查找 NNUE 文件
-     */
-    private File findNnueInNativeLibDir() {
-        String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
-        File libDir = new File(nativeLibDir);
-        
-        if (libDir.exists() && libDir.isDirectory()) {
-            // 检查是否有 pikafish.nnue
-            File nnueFile = new File(libDir, "pikafish.nnue");
-            if (nnueFile.exists() && nnueFile.canRead()) {
-                debug("Found pikafish.nnue in nativeLibraryDir");
-                return nnueFile;
-            }
-            
-            // 也检查 libpikafish_nnue.so（如果把 NNUE 打包成 .so）
-            File nnueSo = new File(libDir, "libpikafish_nnue.so");
-            if (nnueSo.exists() && nnueSo.canRead()) {
-                debug("Found libpikafish_nnue.so in nativeLibraryDir");
-                return nnueSo;
-            }
-        }
-        
+
+        debug("Engine not found in nativeLibraryDir");
         return null;
     }
     
