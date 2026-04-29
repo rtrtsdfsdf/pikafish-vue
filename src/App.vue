@@ -76,10 +76,7 @@ import BottomPanel from './components/BottomPanel.vue'
 import ChessBoard from './components/ChessBoard.vue'
 import LogPanel from './components/LogPanel.vue'
 import { useChessStore } from '@/stores/chess'
-import { logger, setupGlobalLogging } from '@/utils/logger'
-
-// 启用全局日志
-setupGlobalLogging()
+import { logger } from '@/utils/logger'
 
 const store = useChessStore()
 

@@ -66,24 +66,47 @@ onUnmounted(() => {
 
 function copyLogs() {
   const text = logger.getText();
-  navigator.clipboard.writeText(text).then(() => {
-    copied.value = true;
-    setTimeout(() => {
-      copied.value = false;
-    }, 2000);
-  }).catch(err => {
-    // Fallback for older browsers
+  
+  // 尝试使用 Clipboard API
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      copied.value = true;
+      setTimeout(() => {
+        copied.value = false;
+      }, 2000);
+    }).catch(err => {
+      console.error('Copy failed:', err);
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text: string) {
+  try {
     const textarea = document.createElement('textarea');
     textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
     document.body.appendChild(textarea);
+    textarea.focus();
     textarea.select();
-    document.execCommand('copy');
+    const success = document.execCommand('copy');
     document.body.removeChild(textarea);
-    copied.value = true;
-    setTimeout(() => {
-      copied.value = false;
-    }, 2000);
-  });
+    
+    if (success) {
+      copied.value = true;
+      setTimeout(() => {
+        copied.value = false;
+      }, 2000);
+    } else {
+      alert('复制失败，请手动选择复制');
+    }
+  } catch (err) {
+    console.error('Fallback copy failed:', err);
+    alert('复制失败，请手动选择复制');
+  }
 }
 
 function clearLogs() {

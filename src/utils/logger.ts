@@ -10,6 +10,11 @@ class Logger {
   private logs: LogEntry[] = [];
   private maxLogs = 500;
   private listeners: Set<(logs: LogEntry[]) => void> = new Set();
+  private originalConsole = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+  };
 
   log(level: LogEntry['level'], ...args: any[]) {
     const now = new Date();
@@ -29,17 +34,17 @@ class Logger {
     // 通知监听者
     this.notifyListeners();
     
-    // 同时输出到控制台
+    // 使用原始 console 输出（避免循环）
     const prefix = `[${time}] [${level.toUpperCase()}]`;
     switch (level) {
       case 'error':
-        console.error(prefix, ...args);
+        this.originalConsole.error(prefix, ...args);
         break;
       case 'warn':
-        console.warn(prefix, ...args);
+        this.originalConsole.warn(prefix, ...args);
         break;
       default:
-        console.log(prefix, ...args);
+        this.originalConsole.log(prefix, ...args);
     }
   }
 
@@ -84,27 +89,3 @@ class Logger {
 }
 
 export const logger = new Logger();
-
-// 替换 console.log 等（可选）
-export function setupGlobalLogging() {
-  // 保存原始方法
-  const originalLog = console.log;
-  const originalWarn = console.warn;
-  const originalError = console.error;
-
-  // 替换
-  console.log = (...args) => {
-    logger.info(...args);
-    originalLog.apply(console, args);
-  };
-
-  console.warn = (...args) => {
-    logger.warn(...args);
-    originalWarn.apply(console, args);
-  };
-
-  console.error = (...args) => {
-    logger.error(...args);
-    originalError.apply(console, args);
-  };
-}
