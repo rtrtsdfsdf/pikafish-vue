@@ -17,6 +17,7 @@ export interface Move {
   to: Position;
   piece: string;
   captured?: string;
+  notation?: string; // 走法记号，如 "炮二平五"
 }
 
 // 引擎分析结果

@@ -27,6 +27,49 @@ export const PIECE_NAMES: Record<string, string> = {
   'p': '卒', 'P': '兵',
 };
 
+// 列号映射（红方视角）
+const COL_NAMES_RED = ['九', '八', '七', '六', '五', '四', '三', '二', '一'];
+const COL_NAMES_BLACK = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
+// 生成走法记号
+export function generateNotation(piece: string, from: Position, to: Position, captured?: string): string {
+  const pieceName = PIECE_NAMES[piece] || '';
+  const isRed = piece === piece.toUpperCase();
+  const colNames = isRed ? COL_NAMES_RED : COL_NAMES_BLACK;
+  
+  const fromCol = colNames[from.col];
+  const toCol = colNames[to.col];
+  
+  // 判断走法类型
+  let moveType = '';
+  if (from.row === to.row) {
+    // 平
+    moveType = '平';
+  } else if ((isRed && to.row < from.row) || (!isRed && to.row > from.row)) {
+    // 进
+    moveType = '进';
+  } else {
+    // 退
+    moveType = '退';
+  }
+  
+  // 目标位置
+  let dest = '';
+  if (from.row === to.row) {
+    // 平移，目标是列号
+    dest = toCol;
+  } else if (piece.toLowerCase() === 'n' || piece.toLowerCase() === 'b' || piece.toLowerCase() === 'a') {
+    // 马、象、士，目标是列号
+    dest = toCol;
+  } else {
+    // 其他棋子，目标是步数
+    const steps = Math.abs(to.row - from.row);
+    dest = isRed ? COL_NAMES_RED[9 - steps] : COL_NAMES_BLACK[steps - 1];
+  }
+  
+  return `${pieceName}${fromCol}${moveType}${dest}`;
+}
+
 // 获取棋子颜色
 export function getPieceColor(piece: string): PieceColor {
   if (!piece || piece === ' ') return '';

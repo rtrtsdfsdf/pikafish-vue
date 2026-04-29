@@ -7,7 +7,8 @@ import {
   getPieceColor,
   boardToFen,
   moveToUci,
-  uciToMove
+  uciToMove,
+  generateNotation
 } from '@/utils/chessLogic';
 import { 
   initEngine, 
@@ -151,12 +152,16 @@ export const useChessStore = defineStore('chess', {
       const piece = this.board[from.row][from.col];
       const captured = this.board[to.row][to.col];
       
+      // 生成走法记号
+      const notation = generateNotation(piece, from, to, captured !== ' ' ? captured : undefined);
+      
       // 记录走法
       const move: Move = {
         from,
         to,
         piece,
-        captured: captured !== ' ' ? captured : undefined
+        captured: captured !== ' ' ? captured : undefined,
+        notation
       };
       this.history.push(move);
       this.currentMoveIndex = this.history.length - 1;
@@ -189,9 +194,20 @@ export const useChessStore = defineStore('chess', {
         // 如果是 AI 回合，让引擎思考并走子
         if (this.shouldAutoPlay()) {
           this.startEngineAnalysis();
+        } else {
+          // 非 AI 模式下也进行分析（显示箭头提示），但不显示"思考中"
+          this.startSilentAnalysis();
         }
-        // 非 AI 模式下不自动分析，用户可以点击"提示"按钮手动获取建议
       }
+    },
+
+    // 静默分析（不显示思考中，只更新箭头）
+    startSilentAnalysis() {
+      const fen = boardToFen(this.board);
+      const turn = this.currentTurn === 'red' ? 'w' : 'b';
+      sendCommand(`position fen ${fen} ${turn}`);
+      sendCommand(`go depth ${this.engineDepth}`);
+      // 注意：这里不设置 engineThinking = true
     },
 
     // 开始引擎分析
