@@ -189,10 +189,8 @@ export const useChessStore = defineStore('chess', {
         // 如果是 AI 回合，让引擎思考并走子
         if (this.shouldAutoPlay()) {
           this.startEngineAnalysis();
-        } else {
-          // 否则只进行分析（显示提示）
-          this.startEngineAnalysis();
         }
+        // 非 AI 模式下不自动分析，用户可以点击"提示"按钮手动获取建议
       }
     },
 
