@@ -49,4 +49,7 @@ export interface GameState {
   gameOver: boolean;
   winner: 'red' | 'black' | null;
   arrows: Arrow[]; // 显示的箭头列表
+  autoPlayMode: 'none' | 'red' | 'black' | 'both'; // AI 自动对弈模式
+  engineDepth: number; // 引擎搜索深度
+  currentMoveIndex: number; // 当前走法索引（用于导航）
 }

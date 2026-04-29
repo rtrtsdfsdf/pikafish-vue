@@ -28,7 +28,10 @@ export const useChessStore = defineStore('chess', {
     engineInfo: null,
     gameOver: false,
     winner: null,
-    arrows: [], // 箭头列表
+    arrows: [],
+    autoPlayMode: 'none',
+    engineDepth: 20,
+    currentMoveIndex: -1,
   }),
 
   actions: {
@@ -50,7 +53,45 @@ export const useChessStore = defineStore('chess', {
         }
       } else if (parsed.type === 'bestmove') {
         this.engineThinking = false;
-        // 可以在这里自动执行引擎建议的走法
+        
+        // 如果是 AI 模式，自动执行走法
+        const bestMove = (parsed.data as any)?.move;
+        if (bestMove && this.shouldAutoPlay()) {
+          this.executeEngineMove(bestMove);
+        }
+      }
+    },
+
+    // 判断是否应该 AI 自动走子
+    shouldAutoPlay(): boolean {
+      if (this.gameOver) return false;
+      
+      const isAITurn = 
+        (this.autoPlayMode === 'red' && this.currentTurn === 'red') ||
+        (this.autoPlayMode === 'black' && this.currentTurn === 'black') ||
+        (this.autoPlayMode === 'both');
+      
+      return isAITurn;
+    },
+
+    // 执行引擎走法
+    executeEngineMove(uci: string) {
+      const move = uciToMove(uci);
+      if (move) {
+        // 延迟一点执行，让用户看到思考过程
+        setTimeout(() => {
+          this.movePiece(move.from, move.to);
+        }, 500);
+      }
+    },
+
+    // 设置自动对弈模式
+    setAutoPlayMode(mode: 'none' | 'red' | 'black' | 'both') {
+      this.autoPlayMode = mode;
+      
+      // 如果当前是 AI 回合，立即开始思考
+      if (this.shouldAutoPlay() && !this.gameOver) {
+        this.startEngineAnalysis();
       }
     },
 
@@ -118,6 +159,7 @@ export const useChessStore = defineStore('chess', {
         captured: captured !== ' ' ? captured : undefined
       };
       this.history.push(move);
+      this.currentMoveIndex = this.history.length - 1;
       
       // 执行走法
       this.board = makeMove(this.board, from, to);
@@ -135,14 +177,23 @@ export const useChessStore = defineStore('chess', {
       this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
       this.selectedPos = null;
       this.validMoves = [];
+      this.arrows = []; // 清空箭头
       
       // 通知引擎
       const fen = boardToFen(this.board);
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
       sendCommand(`position fen ${fen} ${turn}`);
       
-      // 开始分析
-      this.startEngineAnalysis();
+      // 如果游戏未结束，开始分析
+      if (!this.gameOver) {
+        // 如果是 AI 回合，让引擎思考并走子
+        if (this.shouldAutoPlay()) {
+          this.startEngineAnalysis();
+        } else {
+          // 否则只进行分析（显示提示）
+          this.startEngineAnalysis();
+        }
+      }
     },
 
     // 开始引擎分析
@@ -201,6 +252,53 @@ export const useChessStore = defineStore('chess', {
     flipBoard() {
       this.board = this.board.reverse().map(row => [...row].reverse());
       this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
-    }
+    },
+
+    // 走法导航
+    goToStart() {
+      this.currentMoveIndex = -1;
+      this.rebuildBoardFromHistory();
+    },
+
+    goToPrev() {
+      if (this.currentMoveIndex >= 0) {
+        this.currentMoveIndex--;
+        this.rebuildBoardFromHistory();
+      }
+    },
+
+    goToNext() {
+      if (this.currentMoveIndex < this.history.length - 1) {
+        this.currentMoveIndex++;
+        this.rebuildBoardFromHistory();
+      }
+    },
+
+    goToEnd() {
+      this.currentMoveIndex = this.history.length - 1;
+      this.rebuildBoardFromHistory();
+    },
+
+    // 根据历史记录重建棋盘
+    rebuildBoardFromHistory() {
+      // 重置到初始状态
+      this.board = INITIAL_BOARD.map(row => [...row]);
+      this.currentTurn = 'red';
+      
+      // 重放到当前索引
+      for (let i = 0; i <= this.currentMoveIndex; i++) {
+        const move = this.history[i]!;
+        this.board = makeMove(this.board, move.from, move.to);
+        this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
+      }
+      
+      this.selectedPos = null;
+      this.validMoves = [];
+    },
+
+    // 获取提示
+    async getHint() {
+      this.startEngineAnalysis();
+    },
   }
 });

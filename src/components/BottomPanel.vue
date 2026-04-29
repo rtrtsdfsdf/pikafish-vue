@@ -277,18 +277,23 @@ const rounds = computed(() => {
 .thinking {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 8px;
-  color: #f5deb3;
+  padding: 10px;
+  color: #ffc107;
+  font-weight: bold;
+  background: rgba(255, 193, 7, 0.1);
+  border-radius: 6px;
+  margin-top: 8px;
 }
 
 .spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #f5deb3;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #ffc107;
   border-top-color: transparent;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
