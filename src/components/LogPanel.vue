@@ -126,7 +126,7 @@ function clearLogs() {
   border-radius: 8px;
   display: flex;
   flex-direction: column;
-  z-index: 1000;
+  z-index: 100;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 12px;
 }

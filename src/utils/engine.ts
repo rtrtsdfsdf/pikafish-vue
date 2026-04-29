@@ -1,5 +1,7 @@
 // Pikafish WASM 引擎封装
 
+import { logger } from './logger';
+
 let engineWorker: Worker | null = null;
 let messageCallback: ((msg: string) => void) | null = null;
 let isReady = false;
@@ -7,12 +9,12 @@ let isReady = false;
 // 初始化引擎
 export async function initEngine(onMessage: (msg: string) => void): Promise<void> {
   if (engineWorker) {
-    console.log('[Engine] Already initialized');
+    logger.info('[Engine] Already initialized');
     return;
   }
 
   messageCallback = onMessage;
-  console.log('[Engine] Starting initialization...');
+  logger.info('[Engine] Starting initialization...');
 
   // 创建 Worker 来加载 WASM
   const workerCode = `
@@ -64,7 +66,7 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
   const workerUrl = URL.createObjectURL(blob);
   
   engineWorker = new Worker(workerUrl);
-  console.log('[Engine] Worker created');
+  logger.info('[Engine] Worker created');
   
   return new Promise((resolve, reject) => {
     if (!engineWorker) {
@@ -78,7 +80,7 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
     
     engineWorker.onmessage = (e) => {
       const { type, data } = e.data;
-      console.log('[Engine] Worker message:', type, data);
+      logger.info('[Engine] Worker message:', type, data);
       
       if (type === 'ready') {
         clearTimeout(timeout);
@@ -87,7 +89,7 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
         sendCommand('uci');
         setTimeout(() => {
           sendCommand('isready');
-          console.log('[Engine] Initialization complete');
+          logger.info('[Engine] Initialization complete');
           resolve();
         }, 500);
       } else if (type === 'message') {
@@ -102,7 +104,7 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
     
     engineWorker.onerror = (err) => {
       clearTimeout(timeout);
-      console.error('[Engine] Worker error:', err);
+      logger.error('[Engine] Worker error:', err);
       reject(err);
     };
     
@@ -114,10 +116,10 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
 // 发送命令到引擎
 export function sendCommand(cmd: string): void {
   if (engineWorker && isReady) {
-    console.log('[Engine] Sending command:', cmd);
+    logger.info('[Engine] Sending command:', cmd);
     engineWorker.postMessage({ type: 'command', data: cmd });
   } else if (!isReady) {
-    console.warn('[Engine] Engine not ready, queuing command:', cmd);
+    logger.warn('[Engine] Engine not ready, queuing command:', cmd);
     // 引擎未就绪时也发送，让队列处理
     if (engineWorker) {
       engineWorker.postMessage({ type: 'command', data: cmd });

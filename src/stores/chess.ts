@@ -17,6 +17,7 @@ import {
   startAnalysis,
   stopAnalysis
 } from '@/utils/engine';
+import { logger } from '@/utils/logger';
 
 export const useChessStore = defineStore('chess', {
   state: (): GameState => ({
@@ -43,12 +44,12 @@ export const useChessStore = defineStore('chess', {
 
     // 处理引擎消息
     handleEngineMessage(line: string) {
-      console.log('[Engine]', line); // 调试日志
+      logger.info('[Engine]', line);
       const parsed = parseEngineLine(line);
       
       if (parsed.type === 'info') {
         this.engineInfo = parsed.data as EngineInfo;
-        console.log('[Engine Info]', this.engineInfo); // 调试日志
+        logger.info('[Engine Info]', this.engineInfo);
         
         // 根据 PV 更新箭头
         if (this.engineInfo.pv && this.engineInfo.pv.length > 0) {
@@ -59,7 +60,7 @@ export const useChessStore = defineStore('chess', {
         
         // 如果是 AI 模式，自动执行走法
         const bestMove = parsed.data;
-        console.log('[BestMove]', bestMove); // 调试日志
+        logger.info('[BestMove]', bestMove);
         if (bestMove && this.shouldAutoPlay()) {
           this.executeEngineMove(bestMove);
         }
