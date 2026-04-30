@@ -242,11 +242,21 @@ export const useChessStore = defineStore('chess', {
       this.winner = null;
       this.selectedPos = null;
       this.validMoves = [];
+      this.arrows = [];
       
       // 更新引擎
       const fen = boardToFen(this.board);
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
       sendCommand(`position fen ${fen} ${turn}`);
+      
+      // 悔棋后重新分析新局面（与走子后一致）
+      if (!this.gameOver) {
+        if (this.shouldAutoPlay()) {
+          this.startEngineAnalysis();
+        } else {
+          this.startSilentAnalysis();
+        }
+      }
     },
 
     // 重新开始
