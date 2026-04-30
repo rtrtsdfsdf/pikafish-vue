@@ -96,6 +96,7 @@ export const useChessStore = defineStore('chess', {
       
       // 如果当前是 AI 回合，立即开始思考
       if (this.shouldAutoPlay() && !this.gameOver) {
+        this.stopEngineAnalysis();
         this.startEngineAnalysis();
       }
     },
@@ -188,6 +189,9 @@ export const useChessStore = defineStore('chess', {
       this.validMoves = [];
       this.arrows = []; // 清空箭头
       
+      // 先停止当前分析
+      this.stopEngineAnalysis();
+
       // 通知引擎
       const fen = boardToFen(this.board);
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
@@ -244,6 +248,9 @@ export const useChessStore = defineStore('chess', {
       this.validMoves = [];
       this.arrows = [];
       
+      // 先停止当前分析
+      this.stopEngineAnalysis();
+
       // 更新引擎
       const fen = boardToFen(this.board);
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
@@ -272,6 +279,7 @@ export const useChessStore = defineStore('chess', {
       this.winner = null;
       this.arrows = []; // 清空箭头
       
+      this.stopEngineAnalysis();
       sendCommand('ucinewgame');
       sendCommand('position fen rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w');
     },
