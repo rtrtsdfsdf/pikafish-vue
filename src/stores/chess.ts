@@ -226,7 +226,12 @@ export const useChessStore = defineStore('chess', {
 
     // 停止引擎分析
     stopEngineAnalysis() {
+      // 立即清除旧分析结果（视觉反馈）
+      this.engineInfo = null;
+      this.arrows = [];
       this.engineThinking = false;
+      
+      // 通知引擎停止当前搜索
       stopAnalysis();
     },
 
