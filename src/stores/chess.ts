@@ -20,7 +20,7 @@ import {
 import { logger } from '@/utils/logger';
 
 export const useChessStore = defineStore('chess', {
-  state: (): GameState => ({
+  state: (): GameState & { isMoving: boolean; moveSequence: number } => ({
     board: INITIAL_BOARD.map(row => [...row]),
     currentTurn: 'red',
     selectedPos: null,
@@ -34,6 +34,8 @@ export const useChessStore = defineStore('chess', {
     autoPlayMode: 'none',
     engineDepth: 20,
     currentMoveIndex: -1,
+    isMoving: false,
+    moveSequence: 0, // 每次走子后递增，用于过滤过时的 bestmove
   }),
 
   actions: {
@@ -48,6 +50,9 @@ export const useChessStore = defineStore('chess', {
       const parsed = parseEngineLine(line);
       
       if (parsed.type === 'info') {
+        // 如果正在走子过程中，忽略 info 消息（避免旧搜索的残留消息干扰）
+        if (this.isMoving) return;
+        
         this.engineInfo = parsed.data as EngineInfo;
         logger.info('[Engine Info]', this.engineInfo);
         
@@ -56,13 +61,19 @@ export const useChessStore = defineStore('chess', {
           this.updateArrowsFromPV(this.engineInfo.pv);
         }
       } else if (parsed.type === 'bestmove') {
+        // 如果正在走子过程中，忽略 bestmove（防止重复执行）
+        if (this.isMoving) {
+          logger.info('[BestMove] Ignored, move in progress');
+          return;
+        }
+        
         this.engineThinking = false;
         
         // 如果是 AI 模式，自动执行走法
         const bestMove = parsed.data;
         logger.info('[BestMove]', bestMove);
         if (bestMove && this.shouldAutoPlay()) {
-          this.executeEngineMove(bestMove);
+          this.executeEngineMove(bestMove, this.moveSequence);
         }
       }
     },
@@ -80,13 +91,21 @@ export const useChessStore = defineStore('chess', {
     },
 
     // 执行引擎走法
-    executeEngineMove(uci: string) {
+    executeEngineMove(uci: string, seqAtCall: number) {
+      // 序列号检查：如果 moveSequence 已经变化（棋盘已更新），说明这是过时的 bestmove
+      if (seqAtCall !== this.moveSequence) {
+        logger.warn('[executeEngineMove] Stale bestmove ignored (seq)', { uci, expected: this.moveSequence, got: seqAtCall });
+        return;
+      }
+      
+      if (this.isMoving) {
+        logger.warn('[executeEngineMove] Already moving, ignoring', uci);
+        return;
+      }
+      
       const move = uciToMove(uci);
       if (move) {
-        // 延迟一点执行，让用户看到思考过程
-        setTimeout(() => {
-          this.movePiece(move.from, move.to);
-        }, 500);
+        this.movePiece(move.from, move.to);
       }
     },
 
@@ -104,9 +123,8 @@ export const useChessStore = defineStore('chess', {
     // 根据 PV 更新箭头
     updateArrowsFromPV(pv: string[]) {
       const arrows: Arrow[] = [];
-      const colors = ['#ffeb3b', '#ff9800', '#4caf50', '#2196f3']; // 黄、橙、绿、蓝
+      const colors = ['#ffeb3b', '#ff9800', '#4caf50', '#2196f3'];
       
-      // 最多显示前 3 个走法的箭头
       for (let i = 0; i < Math.min(pv.length, 3); i++) {
         const uci = pv[i];
         if (!uci) continue;
@@ -130,7 +148,6 @@ export const useChessStore = defineStore('chess', {
       
       const piece = this.board[pos.row][pos.col];
       
-      // 如果已选中棋子，尝试移动
       if (this.selectedPos) {
         const isValidMove = this.validMoves.some(
           m => m.row === pos.row && m.col === pos.col
@@ -142,7 +159,6 @@ export const useChessStore = defineStore('chess', {
         }
       }
       
-      // 选择新棋子
       if (piece && piece !== ' ' && getPieceColor(piece) === this.currentTurn) {
         this.selectedPos = pos;
         this.validMoves = getValidMoves(this.board, pos.row, pos.col);
@@ -154,6 +170,13 @@ export const useChessStore = defineStore('chess', {
 
     // 移动棋子
     movePiece(from: Position, to: Position) {
+      if (this.isMoving) {
+        logger.warn('[movePiece] Already moving, ignoring');
+        return;
+      }
+      
+      this.isMoving = true;
+      
       const piece = this.board[from.row][from.col];
       const captured = this.board[to.row][to.col];
       
@@ -187,35 +210,38 @@ export const useChessStore = defineStore('chess', {
       this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
       this.selectedPos = null;
       this.validMoves = [];
-      this.arrows = []; // 清空箭头
+      this.arrows = [];
+      
+      // 递增序列号（在 stopAnalysis 之前，确保后续被丢弃的 bestmove 能检测到过期）
+      this.moveSequence++;
       
       // 先停止当前分析
       this.stopEngineAnalysis();
-
-      // 通知引擎
+      
+      // 通知引擎新棋盘
       const fen = boardToFen(this.board);
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
       sendCommand(`position fen ${fen} ${turn}`);
+
+      // 解锁
+      this.isMoving = false;
       
       // 如果游戏未结束，开始分析
       if (!this.gameOver) {
-        // 如果是 AI 回合，让引擎思考并走子
         if (this.shouldAutoPlay()) {
           this.startEngineAnalysis();
         } else {
-          // 非 AI 模式下也进行分析（显示箭头提示），但不显示"思考中"
           this.startSilentAnalysis();
         }
       }
     },
 
-    // 静默分析（不显示思考中，只更新箭头）
+    // 静默分析
     startSilentAnalysis() {
       const fen = boardToFen(this.board);
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
       sendCommand(`position fen ${fen} ${turn}`);
       sendCommand(`go depth ${this.engineDepth}`);
-      // 注意：这里不设置 engineThinking = true
     },
 
     // 开始引擎分析
@@ -226,26 +252,22 @@ export const useChessStore = defineStore('chess', {
 
     // 停止引擎分析
     stopEngineAnalysis() {
-      // 立即清除旧分析结果（视觉反馈）
       this.engineInfo = null;
       this.arrows = [];
       this.engineThinking = false;
-      
-      // 通知引擎停止当前搜索
       stopAnalysis();
     },
 
     // 悔棋
     undoMove() {
       if (this.history.length === 0) return;
+      if (this.isMoving) return;
       
       const lastMove = this.history.pop()!;
       
-      // 恢复棋盘
       this.board[lastMove.from.row][lastMove.from.col] = lastMove.piece;
       this.board[lastMove.to.row][lastMove.to.col] = lastMove.captured || ' ';
       
-      // 恢复回合
       this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
       this.gameOver = false;
       this.winner = null;
@@ -253,15 +275,12 @@ export const useChessStore = defineStore('chess', {
       this.validMoves = [];
       this.arrows = [];
       
-      // 先停止当前分析
       this.stopEngineAnalysis();
 
-      // 更新引擎
       const fen = boardToFen(this.board);
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
       sendCommand(`position fen ${fen} ${turn}`);
       
-      // 悔棋后重新分析新局面（与走子后一致）
       if (!this.gameOver) {
         if (this.shouldAutoPlay()) {
           this.startEngineAnalysis();
@@ -282,7 +301,9 @@ export const useChessStore = defineStore('chess', {
       this.engineInfo = null;
       this.gameOver = false;
       this.winner = null;
-      this.arrows = []; // 清空箭头
+      this.arrows = [];
+      this.isMoving = false;
+      this.moveSequence = 0; // 重置序列号
       
       this.stopEngineAnalysis();
       sendCommand('ucinewgame');
@@ -320,13 +341,10 @@ export const useChessStore = defineStore('chess', {
       this.rebuildBoardFromHistory();
     },
 
-    // 根据历史记录重建棋盘
     rebuildBoardFromHistory() {
-      // 重置到初始状态
       this.board = INITIAL_BOARD.map(row => [...row]);
       this.currentTurn = 'red';
       
-      // 重放到当前索引
       for (let i = 0; i <= this.currentMoveIndex; i++) {
         const move = this.history[i]!;
         this.board = makeMove(this.board, move.from, move.to);
@@ -337,7 +355,6 @@ export const useChessStore = defineStore('chess', {
       this.validMoves = [];
     },
 
-    // 获取提示
     async getHint() {
       this.startEngineAnalysis();
     },
