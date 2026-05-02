@@ -36,7 +36,7 @@ export const useChessStore = defineStore('chess', {
     currentMoveIndex: -1,
     isMoving: false,
     moveSequence: 0, // 每次走子后递增，用于过滤过时的 bestmove
-    searchSequence: 0, // 当前搜索启动时的 moveSequence 值
+    deferSearch: false, // stop 时引擎正在搜索，需等待残留 bestmove 被丢弃后再启动新搜索
   }),
 
   actions: {
@@ -67,9 +67,13 @@ export const useChessStore = defineStore('chess', {
         
         this.engineThinking = false;
         
-        // 序列号检查：如果 moveSequence 已经变化（棋盘已更新），说明是 stop 的残留 bestmove
-        if (this.searchSequence < this.moveSequence) {
-          logger.info('[BestMove] Stale from old search, ignored');
+        // deferSearch 标记：这个 bestmove 是 stop 的残留，丢弃后启动新搜索
+        if (this.deferSearch) {
+          this.deferSearch = false;
+          logger.info('[BestMove] Stale from stop, starting deferred search');
+          if (!this.gameOver && this.shouldAutoPlay()) {
+            this.startEngineAnalysis();
+          }
           return;
         }
         
@@ -204,13 +208,14 @@ export const useChessStore = defineStore('chess', {
       this.validMoves = [];
       this.arrows = [];
       
-      // 递增序列号（在 stopAnalysis 之前，确保后续被丢弃的 bestmove 能检测到过期）
+      // 递增序列号
       this.moveSequence++;
       
-      // 先停止当前分析（会发送 stop，残留 bestmove 会被 searchSequence 过滤掉）
+      // 停止当前分析。如果引擎正在思考，stop 会返回一个残留 bestmove
+      const wasEngineThinking = this.engineThinking;
       this.stopEngineAnalysis();
       
-      // 通知引擎新棋盘
+      // 通知引擎新棋盘（为残留 bestmove 和新搜索做准备）
       const fen = boardToFen(this.board);
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
       sendCommand(`position fen ${fen} ${turn}`);
@@ -218,12 +223,17 @@ export const useChessStore = defineStore('chess', {
       // 解锁
       this.isMoving = false;
       
-      // 如果游戏未结束且当前是 AI 回合，则开新引擎
+      // 如果引擎刚才正在思考，stop 会产生一个残留 bestmove
+      // 必须等 handleEngineMessage 把它丢弃后，才能启动新搜索
+      // 否则残留 bestmove 和 startEngineAnalysis 会形成竞态
       if (!this.gameOver && this.shouldAutoPlay()) {
-        this.startEngineAnalysis();
+        if (wasEngineThinking) {
+          this.deferSearch = true;
+        } else {
+          this.startEngineAnalysis();
+        }
       }
       // ⚠️ AI 走后自动切到对方回合，如果对方不是 AI，则停下来等人下棋
-      // 不调 startSilentAnalysis 也不调任何 go 命令
     },
 
     // 静默分析（已废弃 — 非 AI 回合不需要给引擎发任何 go 命令）
@@ -239,7 +249,9 @@ export const useChessStore = defineStore('chess', {
     stopEngineAnalysis() {
       this.engineInfo = null;
       this.arrows = [];
+      const wasThinking = this.engineThinking; // 保存状态，用于判断是否会有残留 bestmove
       this.engineThinking = false;
+      this.staleBestMove = wasThinking; // 只有引擎正在思考时，stop 才会返回残留 bestmove
       stopAnalysis();
     },
 
