@@ -36,6 +36,7 @@ export const useChessStore = defineStore('chess', {
     currentMoveIndex: -1,
     isMoving: false,
     moveSequence: 0, // 每次走子后递增，用于过滤过时的 bestmove
+    searchSequence: 0, // 当前搜索启动时的 moveSequence 值
   }),
 
   actions: {
@@ -50,18 +51,15 @@ export const useChessStore = defineStore('chess', {
       const parsed = parseEngineLine(line);
       
       if (parsed.type === 'info') {
-        // 如果正在走子过程中，忽略 info 消息（避免旧搜索的残留消息干扰）
         if (this.isMoving) return;
         
         this.engineInfo = parsed.data as EngineInfo;
         logger.info('[Engine Info]', this.engineInfo);
         
-        // 根据 PV 更新箭头
         if (this.engineInfo.pv && this.engineInfo.pv.length > 0) {
           this.updateArrowsFromPV(this.engineInfo.pv);
         }
       } else if (parsed.type === 'bestmove') {
-        // 如果正在走子过程中，忽略 bestmove（防止重复执行）
         if (this.isMoving) {
           logger.info('[BestMove] Ignored, move in progress');
           return;
@@ -69,11 +67,16 @@ export const useChessStore = defineStore('chess', {
         
         this.engineThinking = false;
         
-        // 如果是 AI 模式，自动执行走法
+        // 序列号检查：如果 moveSequence 已经变化（棋盘已更新），说明是 stop 的残留 bestmove
+        if (this.searchSequence < this.moveSequence) {
+          logger.info('[BestMove] Stale from old search, ignored');
+          return;
+        }
+        
         const bestMove = parsed.data;
         logger.info('[BestMove]', bestMove);
         if (bestMove && this.shouldAutoPlay()) {
-          this.executeEngineMove(bestMove, this.moveSequence);
+          this.executeEngineMove(bestMove);
         }
       }
     },
@@ -91,18 +94,7 @@ export const useChessStore = defineStore('chess', {
     },
 
     // 执行引擎走法
-    executeEngineMove(uci: string, seqAtCall: number) {
-      // 序列号检查：如果 moveSequence 已经变化（棋盘已更新），说明这是过时的 bestmove
-      if (seqAtCall !== this.moveSequence) {
-        logger.warn('[executeEngineMove] Stale bestmove ignored (seq)', { uci, expected: this.moveSequence, got: seqAtCall });
-        return;
-      }
-      
-      if (this.isMoving) {
-        logger.warn('[executeEngineMove] Already moving, ignoring', uci);
-        return;
-      }
-      
+    executeEngineMove(uci: string) {
       const move = uciToMove(uci);
       if (move) {
         this.movePiece(move.from, move.to);
@@ -215,7 +207,7 @@ export const useChessStore = defineStore('chess', {
       // 递增序列号（在 stopAnalysis 之前，确保后续被丢弃的 bestmove 能检测到过期）
       this.moveSequence++;
       
-      // 先停止当前分析
+      // 先停止当前分析（会发送 stop，残留 bestmove 会被 searchSequence 过滤掉）
       this.stopEngineAnalysis();
       
       // 通知引擎新棋盘
@@ -226,27 +218,20 @@ export const useChessStore = defineStore('chess', {
       // 解锁
       this.isMoving = false;
       
-      // 如果游戏未结束，开始分析
-      if (!this.gameOver) {
-        if (this.shouldAutoPlay()) {
-          this.startEngineAnalysis();
-        } else {
-          this.startSilentAnalysis();
-        }
+      // 如果游戏未结束且当前是 AI 回合，则开新引擎
+      if (!this.gameOver && this.shouldAutoPlay()) {
+        this.startEngineAnalysis();
       }
+      // ⚠️ AI 走后自动切到对方回合，如果对方不是 AI，则停下来等人下棋
+      // 不调 startSilentAnalysis 也不调任何 go 命令
     },
 
-    // 静默分析
-    startSilentAnalysis() {
-      const fen = boardToFen(this.board);
-      const turn = this.currentTurn === 'red' ? 'w' : 'b';
-      sendCommand(`position fen ${fen} ${turn}`);
-      sendCommand(`go depth ${this.engineDepth}`);
-    },
+    // 静默分析（已废弃 — 非 AI 回合不需要给引擎发任何 go 命令）
 
     // 开始引擎分析
     startEngineAnalysis() {
       this.engineThinking = true;
+      this.searchSequence = this.moveSequence; // 记录当前搜索时的序列号
       startAnalysis(20);
     },
 
@@ -281,12 +266,8 @@ export const useChessStore = defineStore('chess', {
       const turn = this.currentTurn === 'red' ? 'w' : 'b';
       sendCommand(`position fen ${fen} ${turn}`);
       
-      if (!this.gameOver) {
-        if (this.shouldAutoPlay()) {
-          this.startEngineAnalysis();
-        } else {
-          this.startSilentAnalysis();
-        }
+      if (!this.gameOver && this.shouldAutoPlay()) {
+        this.startEngineAnalysis();
       }
     },
 
@@ -304,6 +285,7 @@ export const useChessStore = defineStore('chess', {
       this.arrows = [];
       this.isMoving = false;
       this.moveSequence = 0; // 重置序列号
+      this.searchSequence = 0;
       
       this.stopEngineAnalysis();
       sendCommand('ucinewgame');
