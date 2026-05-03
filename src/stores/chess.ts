@@ -134,14 +134,25 @@ export const useChessStore = defineStore('chess', {
       this.arrows = [];
 
       const fen = boardToFen(this.board);
-      // await position fen 完成后才发 go，杜绝乱序
-      await sendCommand('position fen ' + fen);
-      sendCommand('go depth ' + this.engineDepth);
+      try {
+        // await position fen 完成后才发 go，杜绝乱序
+        await sendCommand('position fen ' + fen);
+        await sendCommand('go depth ' + this.engineDepth);
+      } catch (err: any) {
+        // 引擎挂了 → 回退到 idle
+        logger.error('[Engine] analysis start failed: %s', err?.message || err);
+        this._phase = 'idle';
+        this.engineThinking = false;
+      }
     },
 
     /** 停止当前分析（不重置 phase，留给调用方决定） */
-    _stopAnalysis() {
-      sendCommand('stop');
+    async _stopAnalysis() {
+      try {
+        await sendCommand('stop');
+      } catch {
+        // 引擎挂了，忽略
+      }
       this.engineThinking = false;
       this.engineInfo = null;
       this.arrows = [];
@@ -190,7 +201,7 @@ export const useChessStore = defineStore('chess', {
         return;
       }
       this.selectedPos = pos;
-      this.validMoves = getValidMoves(this.board, pos);
+      this.validMoves = getValidMoves(this.board, pos.row, pos.col);
     },
 
     /** 检查目标位置是否合法 */

@@ -8,6 +8,7 @@ let PikafishEngine: any = null;
 
 let isReady = false;
 let messageCallback: ((msg: string) => void) | null = null;
+let engineVersion: string = '';
 
 // 初始化引擎
 export async function initEngine(onMessage: (msg: string) => void): Promise<void> {
@@ -27,21 +28,16 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
     // 注册消息监听
     PikafishEngine.addListener('engineMessage', (data: { message: string }) => {
       const line = data.message;
-      
-      // 过滤调试消息
       if (line.startsWith('[DEBUG]')) {
         logger.info('[Engine]', line);
         return;
       }
-      
-      // 引擎输出
       if (messageCallback) {
         messageCallback(line);
       }
     });
 
     // 初始化引擎
-    logger.info('[Engine] Calling init...');
     const result = await PikafishEngine.init();
     
     if (result.success) {
@@ -57,42 +53,71 @@ export async function initEngine(onMessage: (msg: string) => void): Promise<void
   }
 }
 
-// 发送命令到引擎
-export function sendCommand(cmd: string): void {
-  if (!isReady || !PikafishEngine) {
-    logger.warn('[Engine] Engine not ready, ignoring command:', cmd);
-    return;
+// 发送命令到引擎（返回 Promise，让调用方能 await）
+export async function sendCommand(cmd: string): Promise<void> {
+  if (!PikafishEngine || !isReady) {
+    const err = new Error(`Engine not ready (isReady=${isReady}, hasPlugin=${!!PikafishEngine})`);
+    logger.warn('[Engine]', err.message, 'ignoring command:', cmd);
+    throw err;
   }
   
   logger.info('[Engine] Sending command:', cmd);
-  PikafishEngine.sendCommand({ command: cmd }).catch((err: Error) => {
-    logger.error('[Engine] Send error:', err);
-  });
+  try {
+    await PikafishEngine.sendCommand({ command: cmd });
+  } catch (err: any) {
+    logger.error('[Engine] Send error:', err?.message || err);
+    // Stream closed — 引擎进程挂了，标记为未就绪，后续调用会发现并重试
+    if (err?.message?.includes('Stream closed') || err?.message?.includes('stream closed')) {
+      isReady = false;
+      logger.error('[Engine] Engine stream closed, will need re-init');
+    }
+    throw err;
+  }
 }
 
 // 设置位置 (FEN 格式)
 export function setPosition(fen: string): void {
-  sendCommand(`position fen ${fen}`);
+  sendCommand(`position fen ${fen}`).catch(() => {});
 }
 
 // 开始分析
 export function startAnalysis(depth: number = 20): void {
-  sendCommand(`go depth ${depth}`);
+  sendCommand(`go depth ${depth}`).catch(() => {});
 }
 
 // 停止分析
 export function stopAnalysis(): void {
-  sendCommand('stop');
+  sendCommand('stop').catch(() => {});
 }
 
 // 设置哈希大小 (MB)
 export function setHashSize(mb: number): void {
-  sendCommand(`setoption name Hash value ${mb}`);
+  sendCommand(`setoption name Hash value ${mb}`).catch(() => {});
 }
 
 // 设置线程数
 export function setThreads(n: number): void {
-  sendCommand(`setoption name Threads value ${n}`);
+  sendCommand(`setoption name Threads value ${n}`).catch(() => {});
+}
+
+// 发送 UCI 命令
+export function sendUciCommand(): void {
+  sendCommand('uci').catch(() => {});
+}
+
+// 发送 isready 命令（用于检查引擎是否就绪）
+export function sendIsReady(): void {
+  sendCommand('isready').catch(() => {});
+}
+
+// 检查引擎是否就绪
+export function isEngineReady(): boolean {
+  return isReady;
+}
+
+// 获取引擎版本
+export function getEngineVersion(): string {
+  return engineVersion;
 }
 
 // 解析引擎输出
@@ -146,10 +171,19 @@ function parseInfoLine(line: string): any {
 }
 
 // 销毁引擎
-export function destroyEngine(): void {
+export async function destroyEngine(): Promise<void> {
   if (PikafishEngine) {
-    sendCommand('quit');
-    PikafishEngine.quit().catch(() => {});
+    try {
+      await sendCommand('quit');
+    } catch {
+      // 引擎已死，忽略
+    }
+    try {
+      await PikafishEngine.quit();
+    } catch {
+      // 忽略
+    }
     isReady = false;
+    engineVersion = '';
   }
 }
