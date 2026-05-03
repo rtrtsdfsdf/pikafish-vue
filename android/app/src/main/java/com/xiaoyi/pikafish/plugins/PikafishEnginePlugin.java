@@ -39,6 +39,9 @@ public class PikafishEnginePlugin extends Plugin {
     private final AtomicBoolean isReady = new AtomicBoolean(false);
     private final AtomicBoolean uciOkReceived = new AtomicBoolean(false);
     
+    // 等待 readyok 用
+    private final AtomicBoolean readyOkReceived = new AtomicBoolean(false);
+    
     private void debug(String msg) {
         Log.d(TAG, msg);
         JSObject data = new JSObject();
@@ -71,15 +74,10 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 debug("Work dir: " + engineWorkDir.getAbsolutePath());
                 
-                // 复制 NNUE 模型到工作目录
                 File nnueFile = copyNnueToFilesDir();
                 if (nnueFile != null) {
                     debug("NNUE model ready: " + nnueFile.getAbsolutePath());
                 }
-                
-                // 从 filesDir 查找引擎（nativeLibraryDir 写入受限）
-                // 从 nativeLibraryDir 查找引擎（Android 管理 exec 权限）
-
                 
                 String enginePath = findEngine();
                 
@@ -88,14 +86,9 @@ public class PikafishEnginePlugin extends Plugin {
                 }
                 
                 debug("Using engine: " + enginePath);
-                
-                // 启动引擎
                 debug("Starting engine process...");
                 
-                // 设置环境变量，让引擎知道 NNUE 文件位置
-                // 设置环境变量
                 String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
-                // Set LD_LIBRARY_PATH so the engine can find libc++_shared.so
                 String[] envp = new String[] {
                     "LD_LIBRARY_PATH=" + nativeLibDir,
                     "PIKAFISH_LIB_DIR=" + nativeLibDir
@@ -128,6 +121,7 @@ public class PikafishEnginePlugin extends Plugin {
                                 debug("STDERR: " + line);
                             }
                         }
+                        debug("STDERR thread exiting, process alive: " + engineProcess.isAlive());
                     } catch (IOException e) {
                         debug("Error reader: " + e.getMessage());
                     }
@@ -145,42 +139,41 @@ public class PikafishEnginePlugin extends Plugin {
                 
                 // 初始化 UCI
                 debug("Sending uci command...");
-                engineWriter.write("uci\n");
-                engineWriter.flush();
+                writeLine("uci");
                 
-                // 等待 uciok（最多 5 秒）
+                // 等待 uciok（最多 3 秒）
                 int waitCount = 0;
-                while (!uciOkReceived.get() && waitCount < 50) {
+                while (!uciOkReceived.get() && waitCount < 30) {
                     Thread.sleep(100);
                     waitCount++;
                 }
                 debug("Waited " + (waitCount * 100) + "ms for uciok, received: " + uciOkReceived.get());
                 
-                // 发送 EvalFile 命令，显式指定 NNUE 路径
-                if (nnueFile != null) {
-                    debug("NNUE file path: " + nnueFile.getAbsolutePath());
-                    debug("NNUE file exists: " + nnueFile.exists());
-                    debug("NNUE file canRead: " + nnueFile.canRead());
-                    debug("NNUE file length: " + nnueFile.length());
-                    
-                    // 尝试读取文件头来验证文件是否有效
-                    try {
-                        java.io.FileInputStream fis = new java.io.FileInputStream(nnueFile);
-                        byte[] header = new byte[4];
-                        int read = fis.read(header);
-                        fis.close();
-                        debug("NNUE header bytes: " + (read > 0 ? java.util.Arrays.toString(header) : "empty"));
-                    } catch (Exception e) {
-                        debug("Failed to read NNUE header: " + e.getMessage());
-                    }
-                    
-                    debug("Sending EvalFile command: " + nnueFile.getAbsolutePath());
-                    engineWriter.write("setoption name EvalFile value " + nnueFile.getAbsolutePath() + "\n");
-                    engineWriter.flush();
+                if (!uciOkReceived.get()) {
+                    throw new RuntimeException("uciok not received within timeout");
                 }
                 
-                engineWriter.write("isready\n");
-                engineWriter.flush();
+                // 发送 EvalFile 命令，显式指定 NNUE 路径（非必须，引擎自动查找）
+                // 但如果 NNUE 在工作目录中，引擎会自行找到
+                // 不再显式发送 EvalFile，避免引擎崩溃
+                
+                // 发送 isready 等待引擎就绪
+                readyOkReceived.set(false);
+                writeLine("isready");
+                
+                int readyCount = 0;
+                while (!readyOkReceived.get() && readyCount < 30) {
+                    Thread.sleep(100);
+                    readyCount++;
+                }
+                debug("Ready check: " + (readyCount * 100) + "ms, received: " + readyOkReceived.get());
+                
+                if (!readyOkReceived.get()) {
+                    debug("WARNING: readyok not received, continuing anyway");
+                }
+                
+                isRunning.set(true);
+                isReady.set(true);
                 
                 Handler mainHandler = new Handler(Looper.getMainLooper());
                 mainHandler.post(() -> {
@@ -192,7 +185,7 @@ public class PikafishEnginePlugin extends Plugin {
                 
             } catch (Exception e) {
                 debug("ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-                isRunning.set(false);
+                cleanup();
                 Handler mainHandler = new Handler(Looper.getMainLooper());
                 mainHandler.post(() -> {
                     JSObject result = new JSObject();
@@ -205,29 +198,42 @@ public class PikafishEnginePlugin extends Plugin {
     }
     
     /**
-     * 复制 NNUE 模型到 filesDir（可写目录）
+     * 统一写入方法，失败时标记 isRunning=false
+     */
+    private void writeLine(String line) throws IOException {
+        if (!isRunning.get() || engineWriter == null) {
+            throw new IOException("Engine not running");
+        }
+        if (!engineProcess.isAlive()) {
+            isRunning.set(false);
+            debug("Process died while writing, sending error stream");
+            // 尝试读取剩余的 stderr/stdout 来诊断
+            throw new IOException("Process exited with code: " + engineProcess.exitValue());
+        }
+        engineWriter.write(line + "\n");
+        engineWriter.flush();
+    }
+    
+    /**
+     * 复制 NNUE 模型到 filesDir
      */
     private File copyNnueToFilesDir() {
         try {
             String nnueName = "pikafish.nnue";
             
-            // 复制到工作目录（引擎会在工作目录查找 NNUE）
             File targetFile = new File(engineWorkDir, nnueName);
             
             debug("NNUE target path: " + targetFile.getAbsolutePath());
             debug("Files dir: " + getContext().getFilesDir().getAbsolutePath());
             
-            // 缓存检查
             if (targetFile.exists() && targetFile.length() > 40000000) {
                 debug("Using cached NNUE: " + targetFile.length() + " bytes");
                 return targetFile;
             }
             
-            // 检查 assets 中是否存在
             String[] assets = getContext().getAssets().list("engine");
             debug("Assets in engine/: " + (assets != null ? java.util.Arrays.toString(assets) : "null"));
             
-            // 从 assets 复制
             InputStream is = getContext().getAssets().open("engine/" + nnueName);
             FileOutputStream fos = new FileOutputStream(targetFile);
             
@@ -242,7 +248,6 @@ public class PikafishEnginePlugin extends Plugin {
             fos.close();
             is.close();
             
-            // 设置文件可读权限
             targetFile.setReadable(true, false);
             
             debug("Copied NNUE: " + total + " bytes to " + targetFile.getAbsolutePath());
@@ -255,67 +260,16 @@ public class PikafishEnginePlugin extends Plugin {
         }
     }
     
-    /**
-     * 复制引擎到 filesDir（因为 nativeLibraryDir 中的文件无法直接执行）
-     */
-    private File copyEngineToFilesDir() {
-        try {
-            String engineName = "pikafish";
-            File targetFile = new File(engineWorkDir, engineName);
-            
-            debug("Engine target path: " + targetFile.getAbsolutePath());
-            
-            // 缓存检查
-            if (targetFile.exists() && targetFile.length() > 500000 && targetFile.canExecute()) {
-                debug("Using cached engine: " + targetFile.length() + " bytes");
-                return targetFile;
-            }
-            
-            // 从 assets 复制
-            InputStream is = getContext().getAssets().open("engine/" + engineName);
-            FileOutputStream fos = new FileOutputStream(targetFile);
-            
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            long total = 0;
-            while ((bytesRead = is.read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
-                total += bytesRead;
-            }
-            
-            fos.close();
-            is.close();
-            
-            // 设置可执行权限
-            targetFile.setExecutable(true, false);
-            targetFile.setReadable(true, false);
-            
-            debug("Copied engine: " + total + " bytes to " + targetFile.getAbsolutePath());
-            debug("File executable: " + targetFile.canExecute());
-            return targetFile;
-            
-        } catch (IOException e) {
-            debug("Engine copy FAILED: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            return null;
-        }
-    }
-    
-    /**
-     * 查找引擎文件
-     */
     private String findEngine() {
-        // 从 nativeLibraryDir 查找引擎（Android 系统管理 exec 权限）
         String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
         debug("nativeLibraryDir: " + nativeLibDir);
 
-        // 直接构造路径（listFiles 在 Android 10+ 可能为空）
         File engine = new File(nativeLibDir, "libpikafish.so");
         if (engine.exists()) {
             debug("FOUND in nativeLibraryDir: " + engine.getAbsolutePath());
             return engine.getAbsolutePath();
         }
 
-        // 检查父目录的其他 ABI
         File parentDir = new File(nativeLibDir).getParentFile();
         if (parentDir != null && parentDir.exists()) {
             File[] subdirs = parentDir.listFiles();
@@ -342,16 +296,15 @@ public class PikafishEnginePlugin extends Plugin {
             return;
         }
         
-        if (!isRunning.get() || engineWriter == null) {
-            call.reject("Engine not initialized");
+        if (!isRunning.get() || engineWriter == null || !engineProcess.isAlive()) {
+            call.reject("Engine not running or stream closed");
             return;
         }
         
         executor.execute(() -> {
             try {
                 debug(">>> " + command);
-                engineWriter.write(command + "\n");
-                engineWriter.flush();
+                writeLine(command);
                 
                 Handler mainHandler = new Handler(Looper.getMainLooper());
                 mainHandler.post(() -> {
@@ -361,68 +314,14 @@ public class PikafishEnginePlugin extends Plugin {
                 });
             } catch (IOException e) {
                 debug("Send error: " + e.getMessage());
+                isRunning.set(false);
+                isReady.set(false);
                 Handler mainHandler = new Handler(Looper.getMainLooper());
                 mainHandler.post(() -> {
-                    JSObject result = new JSObject();
-                    result.put("success", false);
-                    result.put("error", e.getMessage());
-                    call.resolve(result);
+                    call.reject(e.getMessage());
                 });
             }
         });
-    }
-    
-    /**
-     * 复制 NNUE 到 nativeLibraryDir（引擎子进程可以读取）
-     */
-    private File copyNnueToNativeLibDir() {
-        try {
-            String nativeLibDir = getContext().getApplicationInfo().nativeLibraryDir;
-            File libDir = new File(nativeLibDir);
-            
-            if (!libDir.exists() || !libDir.isDirectory()) {
-                debug("nativeLibraryDir does not exist: " + nativeLibDir);
-                return null;
-            }
-            
-            // 目标文件：pikafish.nnue（不带 .so 后缀）
-            File targetFile = new File(libDir, "pikafish.nnue");
-            
-            debug("Attempting to copy NNUE to: " + targetFile.getAbsolutePath());
-            
-            // 检查是否已存在
-            if (targetFile.exists() && targetFile.length() > 40000000) {
-                debug("NNUE already exists in nativeLibraryDir: " + targetFile.length() + " bytes");
-                return targetFile;
-            }
-            
-            // 从 assets 复制
-            InputStream is = getContext().getAssets().open("engine/pikafish.nnue");
-            FileOutputStream fos = new FileOutputStream(targetFile);
-            
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            long total = 0;
-            while ((bytesRead = is.read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
-                total += bytesRead;
-            }
-            
-            fos.close();
-            is.close();
-            
-            // 设置可读权限
-            targetFile.setReadable(true, false);
-            
-            debug("Copied NNUE to nativeLibraryDir: " + total + " bytes");
-            debug("File canRead: " + targetFile.canRead());
-            
-            return targetFile;
-            
-        } catch (Exception e) {
-            debug("Failed to copy NNUE to nativeLibraryDir: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            return null;
-        }
     }
     
     @PluginMethod
@@ -439,12 +338,9 @@ public class PikafishEnginePlugin extends Plugin {
         
         executor.execute(() -> {
             try {
-                if (engineWriter != null) {
-                    engineWriter.write("quit\n");
-                    engineWriter.flush();
-                }
-                if (engineProcess != null) {
-                    engineProcess.waitFor();
+                if (engineWriter != null && engineProcess.isAlive()) {
+                    writeLine("quit");
+                    engineProcess.waitFor(2000);
                 }
             } catch (Exception e) {
                 debug("Quit error: " + e.getMessage());
@@ -470,18 +366,33 @@ public class PikafishEnginePlugin extends Plugin {
                             debug("uciok received!");
                         }
                         
-                        if (line.contains("readyok")) {
+                        if (line.startsWith("readyok")) {
+                            readyOkReceived.set(true);
                             isReady.set(true);
                         }
                         
+                        // 也响应 option 行
+                        if (line.startsWith("option")) {
+                            // 继续等待 uciok
+                        }
+                        
+                        // 将原始消息发送到 TypeScript 层
                         JSObject data = new JSObject();
                         data.put("message", line);
                         notifyListeners("engineMessage", data);
+                    } else {
+                        // readLine() 返回 null 表示 EOF -> 进程退出
+                        debug("Output stream ended (EOF)");
+                        isRunning.set(false);
+                        isReady.set(false);
+                        break;
                     }
                 }
             } catch (IOException e) {
                 if (isRunning.get()) {
                     debug("Read error: " + e.getMessage());
+                    isRunning.set(false);
+                    isReady.set(false);
                 }
             }
         });
@@ -491,6 +402,8 @@ public class PikafishEnginePlugin extends Plugin {
     private void cleanup() {
         isRunning.set(false);
         isReady.set(false);
+        uciOkReceived.set(false);
+        readyOkReceived.set(false);
         
         try {
             if (engineWriter != null) {
@@ -503,10 +416,19 @@ public class PikafishEnginePlugin extends Plugin {
             }
             if (engineProcess != null) {
                 engineProcess.destroy();
+                engineProcess.waitFor(1000);
+                if (engineProcess.isAlive()) {
+                    engineProcess.destroyForcibly();
+                }
                 engineProcess = null;
             }
         } catch (IOException e) {
             debug("Cleanup error: " + e.getMessage());
+        } catch (InterruptedException e) {
+            debug("Cleanup interrupted: " + e.getMessage());
+            if (engineProcess != null) {
+                engineProcess.destroyForcibly();
+            }
         }
     }
     
