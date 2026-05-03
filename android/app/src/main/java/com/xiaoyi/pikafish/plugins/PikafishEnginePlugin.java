@@ -22,6 +22,7 @@ import java.io.OutputStreamWriter;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @CapacitorPlugin(name = "PikafishEngine")
@@ -340,7 +341,7 @@ public class PikafishEnginePlugin extends Plugin {
             try {
                 if (engineWriter != null && engineProcess.isAlive()) {
                     writeLine("quit");
-                    engineProcess.waitFor(2000);
+                    engineProcess.waitFor(2000, TimeUnit.MILLISECONDS);
                 }
             } catch (Exception e) {
                 debug("Quit error: " + e.getMessage());
@@ -416,7 +417,7 @@ public class PikafishEnginePlugin extends Plugin {
             }
             if (engineProcess != null) {
                 engineProcess.destroy();
-                engineProcess.waitFor(1000);
+                engineProcess.waitFor(1000, TimeUnit.MILLISECONDS);
                 if (engineProcess.isAlive()) {
                     engineProcess.destroyForcibly();
                 }
