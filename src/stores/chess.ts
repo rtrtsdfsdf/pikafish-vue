@@ -136,7 +136,8 @@ export const useChessStore = defineStore('chess', {
       const fen = boardToFen(this.board);
       try {
         // await position fen 完成后才发 go，杜绝乱序
-        await sendCommand('position fen ' + fen);
+        const turn = this.currentTurn === 'red' ? 'w' : 'b';
+        await sendCommand('position fen ' + fen + ' ' + turn);
         await sendCommand('go depth ' + this.engineDepth);
       } catch (err: any) {
         // 引擎挂了 → 回退到 idle
@@ -256,7 +257,7 @@ export const useChessStore = defineStore('chess', {
         for (let c = 0; c < 9; c++) {
           const p = this.board[r][c];
           if (p && getPieceColor(p) === this.currentTurn) {
-            const moves = getValidMoves(this.board, { row: r, col: c });
+            const moves = getValidMoves(this.board, r, c);
             if (moves.length > 0) return;  // 还有走法，游戏继续
           }
         }
