@@ -1,275 +1,353 @@
 import { defineStore } from 'pinia';
-import type { GameState, Position, Move, EngineInfo, Arrow } from '@/types/chess';
+import type { Position, Move, EngineInfo, Arrow } from '@/types/chess';
 import { 
   INITIAL_BOARD, 
   getValidMoves, 
   makeMove, 
-  getPieceColor,
-  boardToFen,
-  moveToUci,
-  uciToMove,
-  generateNotation
+  getPieceColor, 
+  boardToFen, 
+  moveToUci, 
+  uciToMove, 
+  generateNotation 
 } from '@/utils/chessLogic';
-import { 
-  initEngine, 
-  sendCommand, 
-  parseEngineLine, 
-  startAnalysis,
-  stopAnalysis
-} from '@/utils/engine';
+import { initEngine, sendCommand, parseEngineLine, destroyEngine } from '@/utils/engine';
 import { logger } from '@/utils/logger';
 
+/*
+ * ───────── 状态机 ─────────
+ * idle     — 引擎空闲，可以发起新分析
+ * thinking — 引擎正在思考，等待 bestmove
+ * applying — 已收到 bestmove，正在落子
+ *
+ * 允许的转换：
+ *   idle → thinking     (startAnalysis)
+ *   thinking → applying (收到 bestmove)
+ *   applying → idle     (落子完成)
+ *
+ * 任何不在 thinking 状态收到的 bestmove → 丢弃
+ * ────────────────────── */
+type EnginePhase = 'idle' | 'thinking' | 'applying';
+
+interface ChessState {
+  board: string[][];
+  currentTurn: 'red' | 'black';
+  selectedPos: Position | null;
+  validMoves: Position[];
+  history: Move[];
+  gameOver: boolean;
+  winner: 'red' | 'black' | null;
+  arrows: Arrow[];
+  autoPlayMode: 'none' | 'red' | 'black' | 'both';
+  engineDepth: number;
+  currentMoveIndex: number;
+  /** 引擎思考中（供 UI 绑定） */
+  engineThinking: boolean;
+  /** 最佳着法 */
+  engineInfo: EngineInfo | null;
+  /** 引擎状态机 */
+  _phase: EnginePhase;
+}
+
 export const useChessStore = defineStore('chess', {
-  state: (): GameState & { isMoving: boolean; moveSequence: number } => ({
-    board: INITIAL_BOARD.map(row => [...row]),
+  state: (): ChessState => ({
+    board: INITIAL_BOARD.map(r => [...r]),
     currentTurn: 'red',
     selectedPos: null,
     validMoves: [],
     history: [],
-    engineThinking: false,
-    engineInfo: null,
     gameOver: false,
     winner: null,
     arrows: [],
     autoPlayMode: 'none',
     engineDepth: 20,
     currentMoveIndex: -1,
-    isMoving: false,
-    moveSequence: 0,
+    engineThinking: false,
+    engineInfo: null,
+    _phase: 'idle',
   }),
 
+  getters: {
+    /** 当前方是否是 AI 走 */
+    isAITurn(state): boolean {
+      if (state.gameOver) return false;
+      if (state.autoPlayMode === 'both') return true;
+      return state.autoPlayMode === state.currentTurn;
+    },
+  },
+
   actions: {
-    // 初始化引擎
+    /* ============ 引擎生命周期 ============ */
+
     async initGameEngine() {
-      await initEngine((line) => this.handleEngineMessage(line));
+      await initEngine((line) => this._onEngineMessage(line));
     },
 
-    // 处理引擎消息
-    handleEngineMessage(line: string) {
-      logger.info('[Engine]', line);
+    /* ============ 引擎消息处理（状态机核心） ============ */
+
+    _onEngineMessage(line: string) {
       const parsed = parseEngineLine(line);
-      
+
       if (parsed.type === 'info') {
-        if (this.isMoving) return;
+        if (this._phase !== 'thinking') return;        // 过时信息
         this.engineInfo = parsed.data as EngineInfo;
-        logger.info('[Engine Info]', this.engineInfo);
-        if (this.engineInfo.pv && this.engineInfo.pv.length > 0) {
-          this.updateArrowsFromPV(this.engineInfo.pv);
+        if (this.engineInfo?.pv?.length) {
+          this._updateArrowsFromPV(this.engineInfo.pv);
         }
-      } else if (parsed.type === 'bestmove') {
-        if (this.isMoving) {
-          logger.info('[BestMove] Ignored, move in progress');
-          return;
-        }
-        
-        this.engineThinking = false;
-        
-        const bestMove = parsed.data;
-        logger.info('[BestMove]', bestMove);
-        if (bestMove && this.shouldAutoPlay()) {
-          this.executeEngineMove(bestMove);
-        }
-      }
-    },
-
-    // 判断是否应该 AI 自动走子
-    shouldAutoPlay(): boolean {
-      if (this.gameOver) return false;
-      return (
-        (this.autoPlayMode === 'red' && this.currentTurn === 'red') ||
-        (this.autoPlayMode === 'black' && this.currentTurn === 'black') ||
-        (this.autoPlayMode === 'both')
-      );
-    },
-
-    // 执行引擎走法
-    executeEngineMove(uci: string) {
-      const move = uciToMove(uci);
-      if (move) {
-        this.movePiece(move.from, move.to);
-      }
-    },
-
-    // 设置自动对弈模式
-    setAutoPlayMode(mode: 'none' | 'red' | 'black' | 'both') {
-      this.autoPlayMode = mode;
-      // 如果当前是 AI 回合，立即开始思考
-      if (this.shouldAutoPlay() && !this.gameOver) {
-        this.stopCurrentThinking();
-        this.startEngineAnalysis();
-      }
-    },
-
-    // 更新 PV 箭头
-    updateArrowsFromPV(pv: string[]) {
-      const arrows: Arrow[] = [];
-      const colors = ['#ffeb3b', '#ff9800', '#4caf50', '#2196f3'];
-      for (let i = 0; i < Math.min(pv.length, 3); i++) {
-        const uci = pv[i];
-        if (!uci) continue;
-        const move = uciToMove(uci);
-        if (move) {
-          arrows.push({ from: move.from, to: move.to, color: colors[i] || colors[colors.length - 1]! });
-        }
-      }
-      this.arrows = arrows;
-    },
-
-    // 选择棋子（人的操作）
-    selectPiece(pos: Position) {
-      if (this.gameOver) return;
-      const piece = this.board[pos.row][pos.col];
-      if (this.selectedPos) {
-        const isValidMove = this.validMoves.some(m => m.row === pos.row && m.col === pos.col);
-        if (isValidMove) {
-          this.movePiece(this.selectedPos, pos);
-          return;
-        }
-      }
-      if (piece && piece !== ' ' && getPieceColor(piece) === this.currentTurn) {
-        this.selectedPos = pos;
-        this.validMoves = getValidMoves(this.board, pos.row, pos.col);
-      } else {
-        this.selectedPos = null;
-        this.validMoves = [];
-      }
-    },
-
-    // 停止当前思考（仅引擎正在思考时发送 stop）
-    stopCurrentThinking() {
-      if (this.engineThinking) {
-        this.engineInfo = null;
-        this.arrows = [];
-        stopAnalysis();
-        this.engineThinking = false;
-      }
-    },
-
-    // ⭐ 核心：移动棋子
-    movePiece(from: Position, to: Position) {
-      if (this.isMoving) {
-        logger.warn('[movePiece] Already moving, ignoring');
         return;
       }
-      
-      this.isMoving = true;
-      
-      const piece = this.board[from.row][from.col];
-      const captured = this.board[to.row][to.col];
-      const notation = generateNotation(piece, from, to, captured !== ' ' ? captured : undefined);
-      
-      const move: Move = { from, to, piece, captured: captured !== ' ' ? captured : undefined, notation };
-      this.history.push(move);
-      this.currentMoveIndex = this.history.length - 1;
-      
-      this.board = makeMove(this.board, from, to);
-      
-      if (captured === 'k') { this.gameOver = true; this.winner = 'red'; }
-      else if (captured === 'K') { this.gameOver = true; this.winner = 'black'; }
-      
-      this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
-      this.selectedPos = null;
-      this.validMoves = [];
-      this.arrows = [];
-      
-      // 递增序列号
-      this.moveSequence++;
-      
-      // ⚡ 关键修复：只有引擎正在思考时才发 stop
-      // 如果引擎已经 idle（bestmove 刚被消费），不发 stop，避免引擎回发重复走法
-      this.stopCurrentThinking();
-      
-      // 通知引擎新棋盘
-      const fen = boardToFen(this.board);
-      const turn = this.currentTurn === 'red' ? 'w' : 'b';
-      sendCommand(`position fen ${fen} ${turn}`);
 
-      this.isMoving = false;
-      
-      // 如果当前方是 AI，直接开引擎
-      if (!this.gameOver && this.shouldAutoPlay()) {
-        this.startEngineAnalysis();
+      if (parsed.type === 'bestmove') {
+        // ★ 只接受 thinking 阶段的 bestmove
+        if (this._phase !== 'thinking') {
+          logger.warn('[Engine] stale bestmove ignored (phase=%s)', this._phase);
+          return;
+        }
+
+        this.engineThinking = false;
+        const uci = parsed.data as string;
+        logger.info('[Engine] bestmove %s', uci);
+        this._phase = 'applying';          // → applying
+
+        if (uci && uci !== '(none)') {
+          this._applyEngineMove(uci);
+        } else {
+          // 无着法（认输/杀棋），回到 idle
+          this._phase = 'idle';
+        }
+        return;
       }
-      // 非 AI 回合：stop 等人操作，不给引擎发任何 go 命令
+
+      // 其他类型忽略
     },
 
-    // 开始引擎分析
-    startEngineAnalysis() {
+    /* ============ 启动/停止分析 ============ */
+
+    /** 发起新分析：先设 position fen 再发 go，保证顺序 */
+    async _startAnalysis() {
+      if (this._phase !== 'idle') {
+        logger.warn('[Engine] startAnalysis skipped (phase=%s)', this._phase);
+        return;
+      }
+      this._phase = 'thinking';
       this.engineThinking = true;
-      startAnalysis(20);
-    },
-
-    // 悔棋
-    undoMove() {
-      if (this.history.length === 0 || this.isMoving) return;
-      
-      const lastMove = this.history.pop()!;
-      this.board[lastMove.from.row][lastMove.from.col] = lastMove.piece;
-      this.board[lastMove.to.row][lastMove.to.col] = lastMove.captured || ' ';
-      this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
-      this.gameOver = false;
-      this.winner = null;
-      this.selectedPos = null;
-      this.validMoves = [];
+      this.engineInfo = null;
       this.arrows = [];
-      
-      this.stopCurrentThinking();
-      
+
       const fen = boardToFen(this.board);
-      const turn = this.currentTurn === 'red' ? 'w' : 'b';
-      sendCommand(`position fen ${fen} ${turn}`);
-      
-      if (!this.gameOver && this.shouldAutoPlay()) {
-        this.startEngineAnalysis();
-      }
+      // await position fen 完成后才发 go，杜绝乱序
+      await sendCommand('position fen ' + fen);
+      sendCommand('go depth ' + this.engineDepth);
     },
 
-    // 重新开始
-    resetGame() {
-      this.board = INITIAL_BOARD.map(row => [...row]);
-      this.currentTurn = 'red';
-      this.selectedPos = null;
-      this.validMoves = [];
-      this.history = [];
+    /** 停止当前分析（不重置 phase，留给调用方决定） */
+    _stopAnalysis() {
+      sendCommand('stop');
       this.engineThinking = false;
       this.engineInfo = null;
-      this.gameOver = false;
-      this.winner = null;
       this.arrows = [];
-      this.isMoving = false;
-      this.moveSequence = 0;
-      
-      this.stopCurrentThinking();
-      sendCommand('ucinewgame');
-      sendCommand('position fen rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w');
+      // 如果引擎在 thinking 状态，重置为 idle
+      if (this._phase === 'thinking') {
+        this._phase = 'idle';
+      }
     },
 
-    // 翻转棋盘
-    flipBoard() {
-      this.board = this.board.reverse().map(row => [...row].reverse());
-      this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
+    /* ============ 落子与导航 ============ */
+
+    /** 应用引擎的走法（applying 阶段） */
+    _applyEngineMove(uci: string) {
+      const move = uciToMove(uci);
+      if (!move) {
+        logger.error('[Engine] invalid uci: %s', uci);
+        this._phase = 'idle';               // 回到 idle，避免死锁
+        return;
+      }
+      this._executeMove(move.from, move.to);
+      // _executeMove 末尾会检查 isAITurn 并再次 startAnalysis
     },
 
-    // 走法导航
-    goToStart() { this.currentMoveIndex = -1; this.rebuildBoardFromHistory(); },
-    goToPrev() { if (this.currentMoveIndex >= 0) { this.currentMoveIndex--; this.rebuildBoardFromHistory(); } },
-    goToNext() { if (this.currentMoveIndex < this.history.length - 1) { this.currentMoveIndex++; this.rebuildBoardFromHistory(); } },
-    goToEnd() { this.currentMoveIndex = this.history.length - 1; this.rebuildBoardFromHistory(); },
+    /** 点击落子（用户操作） */
+    clickCell(pos: Position) {
+      if (this.gameOver) return;
+      if (this.isAITurn) return;            // AI 走时不允许点击
+      if (this._phase !== 'idle') return;   // 引擎工作中不允许点击
 
-    rebuildBoardFromHistory() {
-      this.board = INITIAL_BOARD.map(row => [...row]);
+      // 选中 → 走子 或 切换选中
+      if (this.selectedPos && this._isValidTarget(pos)) {
+        this._executeMove(this.selectedPos, pos);
+        this.selectedPos = null;
+        this.validMoves = [];
+      } else {
+        this._selectPiece(pos);
+      }
+    },
+
+    /** 选择棋子：显示合法走法 */
+    _selectPiece(pos: Position) {
+      const piece = this.board[pos.row][pos.col];
+      if (!piece || getPieceColor(piece) !== this.currentTurn) {
+        this.selectedPos = null;
+        this.validMoves = [];
+        return;
+      }
+      this.selectedPos = pos;
+      this.validMoves = getValidMoves(this.board, pos);
+    },
+
+    /** 检查目标位置是否合法 */
+    _isValidTarget(pos: Position): boolean {
+      return this.validMoves.some(m => m.row === pos.row && m.col === pos.col);
+    },
+
+    /** 执行走法（状态机核心转换） */
+    _executeMove(from: Position, to: Position) {
+      try {
+        const piece = this.board[from.row][from.col];
+        const captured = this.board[to.row][to.col];
+        const notation = generateNotation(piece, from, to, captured);
+
+        // 走一步
+        this.board = makeMove(this.board, from, to);
+        const move: Move = { from, to, piece, captured: captured || undefined, notation };
+        
+        // 更新历史（截断当前位置之后的记录）
+        if (this.currentMoveIndex < this.history.length - 1) {
+          this.history = this.history.slice(0, this.currentMoveIndex + 1);
+        }
+        this.history.push(move);
+        this.currentMoveIndex = this.history.length - 1;
+
+        // 换手
+        this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
+
+        // 检查将杀/困毙（简单检查：无合法走法即结束）
+        this._checkGameOver();
+
+        // 清空选中状态
+        this.selectedPos = null;
+        this.validMoves = [];
+      } finally {
+        // ★ 确保状态机回到 idle
+        if (this._phase === 'applying') {
+          this._phase = 'idle';
+        }
+      }
+
+      // ★ 检查是否需要AI继续走
+      if (!this.gameOver && this.isAITurn) {
+        this._startAnalysis();
+      }
+    },
+
+    /** 检查游戏是否结束 */
+    _checkGameOver() {
+      // 遍历当前方所有棋子，检查是否还有合法走法
+      for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 9; c++) {
+          const p = this.board[r][c];
+          if (p && getPieceColor(p) === this.currentTurn) {
+            const moves = getValidMoves(this.board, { row: r, col: c });
+            if (moves.length > 0) return;  // 还有走法，游戏继续
+          }
+        }
+      }
+      // 无合法走法 → 对面获胜
+      this.gameOver = true;
+      this.winner = this.currentTurn === 'red' ? 'black' : 'red';
+    },
+
+    /** 初始化引擎并启动 AI（如果设置为 auto） */
+    async startGame() {
+      await this.initGameEngine();
+      if (this.isAITurn) {
+        this._startAnalysis();
+      }
+    },
+
+    /* ============ 模式切换 ============ */
+
+    setAutoPlayMode(mode: 'none' | 'red' | 'black' | 'both') {
+      // 停止当前分析
+      if (this._phase === 'thinking') {
+        this._stopAnalysis();
+      }
+      this.autoPlayMode = mode;
+      this._phase = 'idle';                 // 强制回到 idle
+      this.engineThinking = false;
+      this.engineInfo = null;
+
+      // 如果切换到 AI，立即启动
+      if (!this.gameOver && this.isAITurn) {
+        this._startAnalysis();
+      }
+    },
+
+    /* ============ 提示（获取引擎建议） ============ */
+
+    async getHint() {
+      if (this.gameOver || this._phase !== 'idle') return;
+      this._stopAnalysis();                 // 清理
+      this._startAnalysis();
+      // bestmove 到达后会自动显示箭头
+    },
+
+    /* ============ 走法导航 ============ */
+
+    goToStart() { this._navigateTo(-1); },
+    goToPrev()  { this._navigateTo(this.currentMoveIndex - 1); },
+    goToNext()  { this._navigateTo(this.currentMoveIndex + 1); },
+    goToEnd()   { this._navigateTo(this.history.length - 1); },
+
+    _navigateTo(index: number) {
+      if (index < -1 || index >= this.history.length) return;
+      this.currentMoveIndex = index;
+      this._rebuildBoard();
+    },
+
+    _rebuildBoard() {
+      this.board = INITIAL_BOARD.map(r => [...r]);
       this.currentTurn = 'red';
       for (let i = 0; i <= this.currentMoveIndex; i++) {
-        const move = this.history[i]!;
-        this.board = makeMove(this.board, move.from, move.to);
+        const m = this.history[i];
+        if (!m) continue;
+        this.board = makeMove(this.board, m.from, m.to);
         this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
       }
       this.selectedPos = null;
       this.validMoves = [];
     },
 
-    async getHint() {
-      this.startEngineAnalysis();
+    /* ============ 重置 ============ */
+
+    resetGame() {
+      this._stopAnalysis();
+      this.board = INITIAL_BOARD.map(r => [...r]);
+      this.currentTurn = 'red';
+      this.selectedPos = null;
+      this.validMoves = [];
+      this.history = [];
+      this.gameOver = false;
+      this.winner = null;
+      this.arrows = [];
+      this.currentMoveIndex = -1;
+      this.engineThinking = false;
+      this.engineInfo = null;
+      this._phase = 'idle';
     },
-  }
+
+    /* ============ 工具方法 ============ */
+
+    _updateArrowsFromPV(pv: string[]) {
+      this.arrows = [];
+      for (let i = 0; i < pv.length - 1; i += 2) {
+        const fromUci = pv[i];
+        const toUci = pv[i + 1];
+        if (!fromUci || !toUci) break;
+        const from = uciToMove(fromUci);
+        const to = uciToMove(toUci);
+        if (from && to) {
+          this.arrows.push({ from, to, color: '#FFD700' });
+        }
+      }
+    },
+  },
 });

@@ -306,7 +306,7 @@ function drawSelection(ctx: CanvasRenderingContext2D, cs: number, p: number) {
 function handleCanvasClick(event: MouseEvent) {
   const pos = getPositionFromEvent(event);
   if (pos) {
-    store.selectPiece(pos);
+    store.clickCell(pos);
   }
 }
 
@@ -316,7 +316,7 @@ function handleTouchStart(event: TouchEvent) {
   if (touch) {
     const pos = getPositionFromEvent(touch as any);
     if (pos) {
-      store.selectPiece(pos);
+      store.clickCell(pos);
     }
   }
 }
