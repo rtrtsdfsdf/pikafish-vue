@@ -147,13 +147,10 @@ export const useChessStore = defineStore('chess', {
       }
     },
 
-    /** 停止当前分析（不重置 phase，留给调用方决定） */
-    async _stopAnalysis() {
-      try {
-        await sendCommand('stop');
-      } catch {
-        // 引擎挂了，忽略
-      }
+    /** 停止当前分析（fire-and-forget，不能 await——避免与 _startAnalysis 时序竞态） */
+    _stopAnalysis() {
+      // 发 stop 命令，不等待
+      sendCommand('stop').catch(() => {});
       this.engineThinking = false;
       this.engineInfo = null;
       this.arrows = [];
