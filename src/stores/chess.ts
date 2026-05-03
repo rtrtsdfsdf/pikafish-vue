@@ -347,12 +347,14 @@ export const useChessStore = defineStore('chess', {
 
     _updateArrowsFromPV(pv: string[]) {
       this.arrows = [];
-      for (let i = 0; i < pv.length; i++) {
-        const uci = pv[i];
-        if (!uci) break;
-        const move = uciToMove(uci);
-        if (move) {
-          this.arrows.push({ from: move.from, to: move.to, color: '#FFD700' });
+      for (let i = 0; i < pv.length - 1; i += 2) {
+        const fromUci = pv[i];
+        const toUci = pv[i + 1];
+        if (!fromUci || !toUci) break;
+        const from = uciToMove(fromUci);
+        const to = uciToMove(toUci);
+        if (from && to) {
+          this.arrows.push({ from, to, color: '#FFD700' });
         }
       }
     },
