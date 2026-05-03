@@ -347,8 +347,8 @@ export const useChessStore = defineStore('chess', {
 
     _updateArrowsFromPV(pv: string[]) {
       this.arrows = [];
-      // 只显示前两步，第一步橙红醒目，第二步半透淡灰，易于区分
-      const colors = ['#FF6B35', 'rgba(200, 200, 200, 0.6)'];
+      // 只显示前两步，第一步深色，第二步浅色
+      const colors = ['#FFD700', '#FFE44D'];
       for (let i = 0; i < Math.min(pv.length, 2); i++) {
         const uci = pv[i];
         if (!uci) break;
