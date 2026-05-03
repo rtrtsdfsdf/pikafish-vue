@@ -33,7 +33,7 @@ const COL_NAMES_BLACK = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 // 生成走法记号
 export function generateNotation(piece: string, from: Position, to: Position, captured?: string): string {
-  const pieceName = PIECE_NAMES[piece] || piece;
+  const pieceName = PIECE_NAMES[piece] || '';
   const isRed = piece === piece.toUpperCase();
   const colNames = isRed ? COL_NAMES_RED : COL_NAMES_BLACK;
   
