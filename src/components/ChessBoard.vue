@@ -20,6 +20,12 @@
           <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#4caf50" />
           </marker>
+          <marker id="arrowhead-orangered" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#FF6B35" />
+          </marker>
+          <marker id="arrowhead-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#A0A0A0" />
+          </marker>
         </defs>
         
         <line
@@ -359,6 +365,8 @@ function getMarkerId(color: string): string {
     '#ffeb3b': 'url(#arrowhead-yellow)',
     '#ff9800': 'url(#arrowhead-orange)',
     '#4caf50': 'url(#arrowhead-green)',
+    '#FF6B35': 'url(#arrowhead-orangered)',
+    '#C0C0C0': 'url(#arrowhead-gray)',
   };
   return colorMap[color] || 'url(#arrowhead-yellow)';
 }
