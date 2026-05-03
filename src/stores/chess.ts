@@ -347,12 +347,14 @@ export const useChessStore = defineStore('chess', {
 
     _updateArrowsFromPV(pv: string[]) {
       this.arrows = [];
-      for (let i = 0; i < pv.length; i++) {
+      // 只显示前两步，第一步深色，第二步浅色
+      const colors = ['#FFD700', '#FFE44D'];
+      for (let i = 0; i < Math.min(pv.length, 2); i++) {
         const uci = pv[i];
         if (!uci) break;
         const move = uciToMove(uci);
         if (move) {
-          this.arrows.push({ from: move.from, to: move.to, color: '#FFD700' });
+          this.arrows.push({ from: move.from, to: move.to, color: colors[i] || colors[colors.length - 1]! });
         }
       }
     },
