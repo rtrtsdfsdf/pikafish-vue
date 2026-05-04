@@ -11,7 +11,14 @@ import {
   generateNotation 
 } from '@/utils/chessLogic';
 import { initEngine, sendCommand, parseEngineLine, destroyEngine } from '@/utils/engine';
-import { logger } from '@/utils/logger';
+
+/* ===== DEBUG LOG ===== */
+const DEBUG = true;
+function dlog(...args: any[]) {
+  if (DEBUG) console.log('[DBG][chess]', ...args);
+}
+
+
 
 /*
  * ───────── 状态机 ─────────
@@ -99,13 +106,13 @@ export const useChessStore = defineStore('chess', {
       if (parsed.type === 'bestmove') {
         // ★ 只接受 thinking 阶段的 bestmove
         if (this._phase !== 'thinking') {
-          logger.warn('[Engine] stale bestmove ignored (phase=%s)', this._phase);
+          dlog('stale bestmove ignored (phase=%s)', this._phase);
           return;
         }
 
         this.engineThinking = false;
         const uci = parsed.data as string;
-        logger.info('[Engine] bestmove %s', uci);
+        dlog('bestmove received, phase=%s, uci=%s', this._phase, uci);
         this._phase = 'applying';          // → applying
 
         if (uci && uci !== '(none)') {
@@ -124,14 +131,16 @@ export const useChessStore = defineStore('chess', {
 
     /** 发起新分析：先设 position fen 再发 go，保证顺序 */
     async _startAnalysis() {
+      dlog('_startAnalysis: phase=%s gameOver=%s isAITurn=%s', this._phase, this.gameOver, this.isAITurn);
       if (this._phase !== 'idle') {
-        logger.warn('[Engine] startAnalysis skipped (phase=%s)', this._phase);
+        dlog('startAnalysis skipped (phase=%s)', this._phase);
         return;
       }
       this._phase = 'thinking';
       this.engineThinking = true;
       this.engineInfo = null;
       this.arrows = [];
+      dlog('_startAnalysis: phase -> thinking');
 
       const fen = boardToFen(this.board);
       try {
@@ -141,7 +150,7 @@ export const useChessStore = defineStore('chess', {
         await sendCommand('go depth ' + this.engineDepth);
       } catch (err: any) {
         // 引擎挂了 → 回退到 idle
-        logger.error('[Engine] analysis start failed: %s', err?.message || err);
+        dlog('startAnalysis failed: %s', err?.message || err);
         this._phase = 'idle';
         this.engineThinking = false;
       }
@@ -156,6 +165,7 @@ export const useChessStore = defineStore('chess', {
       this.arrows = [];
       // 如果引擎在 thinking 状态，重置为 idle
       if (this._phase === 'thinking') {
+        dlog('_stopAnalysis: phase thinking -> idle');
         this._phase = 'idle';
       }
     },
@@ -164,9 +174,10 @@ export const useChessStore = defineStore('chess', {
 
     /** 应用引擎的走法（applying 阶段） */
     _applyEngineMove(uci: string) {
+      dlog('_applyEngineMove: uci=%s phase=%s', uci, this._phase);
       const move = uciToMove(uci);
       if (!move) {
-        logger.error('[Engine] invalid uci: %s', uci);
+        dlog('invalid uci: %s', uci);
         this._phase = 'idle';               // 回到 idle，避免死锁
         return;
       }
@@ -176,6 +187,7 @@ export const useChessStore = defineStore('chess', {
 
     /** 点击落子（用户操作） */
     clickCell(pos: Position) {
+      dlog('clickCell: (%d,%d) phase=%s isAITurn=%s gameOver=%s', pos.row, pos.col, this._phase, this.isAITurn, this.gameOver);
       if (this.gameOver) return;
       if (this.isAITurn) return;            // AI 走时不允许点击
       if (this._phase !== 'idle') return;   // 引擎工作中不允许点击
@@ -209,6 +221,7 @@ export const useChessStore = defineStore('chess', {
 
     /** 执行走法（状态机核心转换） */
     _executeMove(from: Position, to: Position) {
+      dlog('_executeMove: (%d,%d)->(%d,%d) phase=%s', from.row, from.col, to.row, to.col, this._phase);
       try {
         const piece = this.board[from.row][from.col];
         const captured = this.board[to.row][to.col];
@@ -227,6 +240,7 @@ export const useChessStore = defineStore('chess', {
 
         // 换手
         this.currentTurn = this.currentTurn === 'red' ? 'black' : 'red';
+        dlog('_executeMove: turn -> %s', this.currentTurn);
 
         // 检查将杀/困毙（简单检查：无合法走法即结束）
         this._checkGameOver();
@@ -237,6 +251,7 @@ export const useChessStore = defineStore('chess', {
       } finally {
         // ★ 确保状态机回到 idle
         if (this._phase === 'applying') {
+          dlog('_executeMove finally: applying->idle');
           this._phase = 'idle';
         }
       }
@@ -293,6 +308,7 @@ export const useChessStore = defineStore('chess', {
     /* ============ 提示（获取引擎建议） ============ */
 
     async getHint() {
+      dlog('getHint: phase=%s gameOver=%s', this._phase, this.gameOver);
       if (this.gameOver || this._phase !== 'idle') return;
       this._stopAnalysis();                 // 清理
       this._startAnalysis();
@@ -328,6 +344,7 @@ export const useChessStore = defineStore('chess', {
     /* ============ 重置 ============ */
 
     resetGame() {
+      dlog('resetGame');
       this._stopAnalysis();
       this.board = INITIAL_BOARD.map(r => [...r]);
       this.currentTurn = 'red';
